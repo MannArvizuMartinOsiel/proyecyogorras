@@ -13,17 +13,64 @@ const PRODUCT_TYPES = {
   bracelet: "Joyería",
   sneaker: "Tenis"
 };
+const PRODUCT_IMAGE_BUCKET = "product-images";
+const MAX_PRODUCT_IMAGE_BYTES = 4 * 1024 * 1024;
+const PRODUCT_IMAGE_TYPES = new Map([
+  ["image/jpeg", { extension: "jpg", signature: bytes => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff }],
+  ["image/png", { extension: "png", signature: bytes => bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) }],
+  ["image/webp", { extension: "webp", signature: bytes => bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP" }]
+]);
 
 function configuredEnv(name) {
-  const value = process.env[name]?.trim();
+  const rawValue = process.env[name]?.trim();
+  const value = rawValue?.replace(/^(['"])(.*)\1$/, "$2").trim();
   return value && !/PEGA_AQUI|TU-PROYECTO/i.test(value) ? value : null;
+}
+
+function validSupabaseUrl(value) {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "https:" || url.protocol === "http:") &&
+      Boolean(url.hostname) &&
+      !url.username &&
+      !url.password;
+  } catch {
+    return false;
+  }
+}
+
+function validSupabaseKey(value, kind) {
+  if (!value) return false;
+  if (/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value)) return true;
+  const prefix = kind === "secret" ? "sb_secret_" : "sb_publishable_";
+  return value.startsWith(prefix) && /^[A-Za-z0-9_-]+$/.test(value.slice(prefix.length));
 }
 
 const port = Number(process.env.PORT || 3001);
 const siteOrigin = new URL(process.env.SITE_ORIGIN || "http://localhost:5500").origin;
-const supabaseUrl = process.env.SUPABASE_URL || "https://medshszlajttiwfpsjol.supabase.co";
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "sb_publishable_5JKhH6JITsProzdf2X_Zzw_9kbR1mnu";
-const supabaseServiceRoleKey = configuredEnv("SUPABASE_SERVICE_ROLE_KEY");
+const defaultSupabaseUrl = "https://medshszlajttiwfpsjol.supabase.co";
+const defaultSupabaseAnonKey = "sb_publishable_5JKhH6JITsProzdf2X_Zzw_9kbR1mnu";
+const configuredSupabaseUrl = configuredEnv("SUPABASE_URL");
+const supabaseUrl = validSupabaseUrl(configuredSupabaseUrl)
+  ? configuredSupabaseUrl
+  : defaultSupabaseUrl;
+if (configuredSupabaseUrl && !validSupabaseUrl(configuredSupabaseUrl)) {
+  console.error("Invalid SUPABASE_URL. Using the configured CAPSTREET project URL; correct SUPABASE_URL in Render.");
+}
+const supabaseAnonCandidate = configuredEnv("SUPABASE_ANON_KEY") || defaultSupabaseAnonKey;
+const supabaseAnonKey = validSupabaseKey(supabaseAnonCandidate, "publishable")
+  ? supabaseAnonCandidate
+  : null;
+if (!supabaseAnonKey) {
+  console.error("Invalid SUPABASE_ANON_KEY. Use the publishable or legacy anon key from the CAPSTREET Supabase project.");
+}
+const supabaseServiceRoleCandidate = configuredEnv("SUPABASE_SERVICE_ROLE_KEY");
+const supabaseServiceRoleKey = validSupabaseKey(supabaseServiceRoleCandidate, "secret")
+  ? supabaseServiceRoleCandidate
+  : null;
+if (supabaseServiceRoleCandidate && !supabaseServiceRoleKey) {
+  console.error("Invalid SUPABASE_SERVICE_ROLE_KEY format. Use a secret or legacy service_role key from the CAPSTREET Supabase project.");
+}
 const stripeSecretCandidate = configuredEnv("STRIPE_SECRET_KEY");
 const stripePublishableCandidate = configuredEnv("STRIPE_PUBLISHABLE_KEY");
 const stripeSecretKey = stripeSecretCandidate && /^sk_(test|live)_[A-Za-z0-9]+$/.test(stripeSecretCandidate)
@@ -49,7 +96,7 @@ const paypalBaseUrl = paypalMode === "live"
   ? "https://api-m.paypal.com"
   : "https://api-m.sandbox.paypal.com";
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
-const authClient = supabaseUrl && supabaseAnonKey
+const authClient = supabaseAnonKey
   ? createClient(supabaseUrl, supabaseAnonKey, {
     auth: { autoRefreshToken: false, persistSession: false }
   })
@@ -59,6 +106,7 @@ const adminClient = supabaseServiceRoleKey
     auth: { autoRefreshToken: false, persistSession: false }
   })
   : null;
+let serviceRoleKeyRejected = false;
 const allowedOrigins = new Set([
   siteOrigin,
   "http://localhost:5500",
@@ -168,6 +216,7 @@ function formatAdminProduct(row) {
     ...template,
     ...row,
     tag: "",
+    image_url: row.image_url || null,
     colorOptions: template.colorOptions,
     sizeOptions: template.sizeOptions
   };
@@ -175,11 +224,25 @@ function formatAdminProduct(row) {
 
 async function getProductCatalog() {
   if (!adminClient) return products;
+  if (serviceRoleKeyRejected) {
+    const error = new Error("Supabase rechazó SUPABASE_SERVICE_ROLE_KEY. Verifica la clave en Render.");
+    error.code = "SUPABASE_SERVICE_ROLE_KEY_REJECTED";
+    throw error;
+  }
   const { data, error } = await adminClient
     .from("admin_products")
-    .select("id,department,category,type,name,description,price,color,brim,patch,label")
+    .select("id,department,category,type,name,description,price,color,brim,patch,label,image_url")
     .order("id", { ascending: true });
-  if (error) throw error;
+  if (error) {
+    if (/invalid api key/i.test(`${error.message || ""} ${error.hint || ""}`)) {
+      serviceRoleKeyRejected = true;
+      console.error("Supabase rechazó SUPABASE_SERVICE_ROLE_KEY. Verifica que sea la clave secreta del proyecto CAPSTREET en Render.");
+      const configurationError = new Error("Supabase rechazó SUPABASE_SERVICE_ROLE_KEY. Verifica la clave en Render.");
+      configurationError.code = "SUPABASE_SERVICE_ROLE_KEY_REJECTED";
+      throw configurationError;
+    }
+    throw error;
+  }
   return [...products, ...data.map(formatAdminProduct)];
 }
 
@@ -318,6 +381,10 @@ app.get("/", (_req, res) => {
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
+    supabase: {
+      authKeyConfigured: Boolean(authClient),
+      serviceRoleKeyConfigured: Boolean(adminClient)
+    },
     payments: {
       stripe: providerReady("stripe"),
       paypal: providerReady("paypal")
@@ -345,6 +412,9 @@ app.get("/api/products", async (_req, res) => {
   try {
     return res.json({ products: await getProductCatalog() });
   } catch (error) {
+    if (error.code === "SUPABASE_SERVICE_ROLE_KEY_REJECTED") {
+      return res.json({ products, source: "bundled" });
+    }
     console.error("Could not load product catalog.", error);
     return res.status(503).json({ error: "No pudimos cargar el catálogo actualizado." });
   }
@@ -356,15 +426,23 @@ app.get("/api/admin/products", async (req, res) => {
     const catalog = await getProductCatalog();
     return res.json({ products: catalog.filter(product => !products.some(item => item.id === product.id)) });
   } catch (error) {
-    console.error("Could not load admin product catalog.", error);
+    if (error.code !== "SUPABASE_SERVICE_ROLE_KEY_REJECTED") {
+      console.error("Could not load admin product catalog.", error);
+    }
+    if (error.code === "SUPABASE_SERVICE_ROLE_KEY_REJECTED") {
+      return res.status(503).json({
+        error: "Supabase rechazó la clave secreta del servidor. Actualiza SUPABASE_SERVICE_ROLE_KEY en Render."
+      });
+    }
     return res.status(503).json({ error: "No pudimos cargar los artículos. Verifica la configuración del catálogo." });
   }
 });
 
-app.post("/api/admin/products", express.json({ limit: "16kb" }), async (req, res) => {
+app.post("/api/admin/products", express.json({ limit: "6mb" }), async (req, res) => {
+  let uploadedImagePath = null;
   try {
     if (!await getAdminUser(req, res)) return;
-    const { name, description, price, type, category } = req.body || {};
+    const { name, description, price, type, category, imageData } = req.body || {};
     const department = PRODUCT_TYPES[type];
     if (
       typeof name !== "string" || !name.trim() || name.trim().length > 80 ||
@@ -373,6 +451,42 @@ app.post("/api/admin/products", express.json({ limit: "16kb" }), async (req, res
       (category !== undefined && (typeof category !== "string" || category.trim().length > 40))
     ) {
       return res.status(400).json({ error: "Revisa nombre, descripción, categoría, tipo y precio del artículo." });
+    }
+
+    let imageUrl = null;
+    if (imageData !== undefined && imageData !== null && imageData !== "") {
+      if (typeof imageData !== "string") {
+        return res.status(400).json({ error: "La imagen del producto no es válida." });
+      }
+      const match = imageData.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/);
+      if (!match) {
+        return res.status(400).json({ error: "Usa una imagen JPG, PNG o WebP válida." });
+      }
+      const [, contentType, encodedImage] = match;
+      const imageBuffer = Buffer.from(encodedImage, "base64");
+      const imageType = PRODUCT_IMAGE_TYPES.get(contentType);
+      if (
+        imageBuffer.length === 0 ||
+        imageBuffer.length > MAX_PRODUCT_IMAGE_BYTES ||
+        !imageType.signature(imageBuffer)
+      ) {
+        return res.status(400).json({ error: "La imagen está vacía, supera 4 MB o su contenido no coincide con el formato." });
+      }
+      uploadedImagePath = `${crypto.randomUUID()}.${imageType.extension}`;
+      const { error: uploadError } = await adminClient.storage
+        .from(PRODUCT_IMAGE_BUCKET)
+        .upload(uploadedImagePath, imageBuffer, {
+          contentType,
+          cacheControl: "31536000",
+          upsert: false
+        });
+      if (uploadError) {
+        console.error("Could not upload admin product image.", uploadError);
+        return res.status(503).json({
+          error: "No pudimos subir la imagen. Verifica que el bucket product-images exista en Supabase."
+        });
+      }
+      imageUrl = adminClient.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(uploadedImagePath).data.publicUrl;
     }
 
     const template = products.find(product => product.type === type);
@@ -386,12 +500,20 @@ app.post("/api/admin/products", express.json({ limit: "16kb" }), async (req, res
       color: template.color,
       brim: template.brim,
       patch: template.patch || null,
-      label: template.label
-    }).select("id,department,category,type,name,description,price,color,brim,patch,label").single();
+      label: template.label,
+      image_url: imageUrl
+    }).select("id,department,category,type,name,description,price,color,brim,patch,label,image_url").single();
     if (error) throw error;
+    uploadedImagePath = null;
     return res.status(201).json({ product: formatAdminProduct(data) });
   } catch (error) {
     console.error("Could not create admin product.", error);
+    if (uploadedImagePath && adminClient) {
+      const { error: cleanupError } = await adminClient.storage
+        .from(PRODUCT_IMAGE_BUCKET)
+        .remove([uploadedImagePath]);
+      if (cleanupError) console.error("Could not remove orphaned admin product image.", cleanupError);
+    }
     return res.status(503).json({ error: "No pudimos guardar el artículo. Intenta de nuevo." });
   }
 });

@@ -59,6 +59,12 @@
           <input id="product-category" name="category" type="text" maxlength="40">
           <label for="product-price">Precio (MXN)</label>
           <input id="product-price" name="price" type="number" min="1" max="1000000" step="1" inputmode="numeric" required>
+          <label for="product-image">Imagen del producto <span>(opcional, JPG/PNG/WebP, máximo 4 MB)</span></label>
+          <input id="product-image" name="image" type="file" accept="image/jpeg,image/png,image/webp">
+          <div class="admin-image-preview" id="product-image-preview" hidden>
+            <img id="product-image-preview-img" alt="Vista previa de la imagen del producto">
+            <button type="button" class="admin-image-remove" id="product-image-remove">Quitar imagen</button>
+          </div>
           <label for="product-description">Descripción</label>
           <textarea id="product-description" name="description" rows="4" maxlength="300" required></textarea>
           <button class="button" type="submit" id="product-save-button">Guardar artículo</button>

@@ -20,7 +20,7 @@ test("the API remains available and disables checkout when payment credentials a
   const env = {
     ...process.env,
     PORT: String(port),
-    SITE_ORIGIN: "http://localhost:5500",
+    SITE_ORIGIN: "https://proyecyogorras.onrender.com",
     PAYPAL_MODE: "sandbox",
     DOTENV_CONFIG_PATH: path.join(__dirname, "__no-test-env__.env"),
     DOTENV_CONFIG_QUIET: "true"
@@ -34,6 +34,9 @@ test("the API remains available and disables checkout when payment credentials a
     "PAYPAL_WEBHOOK_ID",
     "SUPABASE_SERVICE_ROLE_KEY"
   ]) delete env[key];
+  env.SUPABASE_URL = "invalid-supabase-url";
+  env.SUPABASE_ANON_KEY = "invalid-public-key";
+  env.SUPABASE_SERVICE_ROLE_KEY = "invalid-secret-key";
 
   const server = spawn(process.execPath, [path.join(__dirname, "..", "server.js")], {
     env,
@@ -54,8 +57,30 @@ test("the API remains available and disables checkout when payment credentials a
   assert.equal(health.status, 200);
   assert.deepEqual(await health.json(), {
     status: "ok",
+    supabase: {
+      authKeyConfigured: false,
+      serviceRoleKeyConfigured: false
+    },
     payments: { stripe: false, paypal: false }
   });
+
+  const preflight = await fetch(`http://127.0.0.1:${port}/api/admin/products`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://proyecyogorras.onrender.com",
+      "Access-Control-Request-Method": "GET",
+      "Access-Control-Request-Headers": "authorization"
+    }
+  });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get("access-control-allow-origin"), "https://proyecyogorras.onrender.com");
+  assert.match(preflight.headers.get("access-control-allow-methods"), /OPTIONS/);
+  assert.match(preflight.headers.get("access-control-allow-headers"), /Authorization/i);
+
+  const blockedOrigin = await fetch(`http://127.0.0.1:${port}/api/admin/products`, {
+    headers: { Origin: "https://untrusted.example" }
+  });
+  assert.equal(blockedOrigin.status, 403);
 
   const apiRoot = await fetch(`http://127.0.0.1:${port}/`);
   assert.equal(apiRoot.status, 200);

@@ -123,6 +123,10 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
     }
 
     function productArt(product, className = "product-art") {
+      const imageUrl = publicProductImageUrl(product.image_url);
+      if (imageUrl) {
+        return `<img class="${className}" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.department)}: ${escapeHtml(product.name)}" loading="lazy">`;
+      }
       if (product.type === "cap") return capSvg(product, className);
       const { color, brim, label } = product;
       const drawings = {
@@ -133,6 +137,22 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
         sneaker: `<path d="M65 149c20-5 38-20 51-51l15-38 35 13c4 31 23 48 53 60l66 25c15 6 24 16 24 29 0 16-13 25-35 25H75c-23 0-39-11-39-29 0-15 10-28 29-34z" fill="${color}" stroke="#77766f" stroke-width="3"/><path d="M36 177h270c-1 24-17 35-38 35H75c-24 0-38-11-39-35z" fill="${brim}" stroke="#77766f" stroke-width="2"/><path d="m124 96 49 15m-57-1 45 14m-53 1 43 13m-11-68 5 38" fill="none" stroke="${brim}" stroke-width="5" stroke-linecap="round"/><text x="222" y="163" text-anchor="middle" fill="${brim === "#171715" ? "#f5f4ee" : "#171715"}" font-family="Arial,sans-serif" font-size="12" font-weight="700">${label}</text>`
       };
       return `<svg class="${className}" viewBox="0 0 360 260" role="img" aria-label="${escapeHtml(product.department)}: ${escapeHtml(product.name)}">${drawings[product.type]}</svg>`;
+    }
+
+    function publicProductImageUrl(value) {
+      if (typeof value !== "string" || !value) return "";
+      try {
+        const image = new URL(value);
+        const supabase = new URL(SUPABASE_URL);
+        if (
+          image.protocol !== "https:" ||
+          image.origin !== supabase.origin ||
+          !image.pathname.startsWith("/storage/v1/object/public/product-images/")
+        ) return "";
+        return image.href;
+      } catch {
+        return "";
+      }
     }
 
     function variantKey(productId, colorId, size) {

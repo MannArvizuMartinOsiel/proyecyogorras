@@ -102,10 +102,33 @@ create table if not exists public.admin_products (
   brim text not null,
   patch text,
   label text not null,
+  image_url text,
   created_at timestamptz not null default now()
 );
+
+alter table public.admin_products
+  add column if not exists image_url text;
 
 alter table public.admin_products enable row level security;
 revoke all on public.admin_products from anon, authenticated;
 grant select, insert on public.admin_products to service_role;
 grant usage, select on sequence public.admin_products_id_seq to service_role;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'product-images',
+  'product-images',
+  true,
+  4194304,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do update
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "Public can view CAPSTREET product images" on storage.objects;
+create policy "Public can view CAPSTREET product images"
+  on storage.objects for select
+  to public
+  using (bucket_id = 'product-images');

@@ -1,13 +1,13 @@
 services:
   - type: web
-    name: capstreet-store
+    name: proyecyogorras
     runtime: static
     plan: free
     branch: main
     buildCommand: ""
     staticPublishPath: .
   - type: web
-    name: capstreet-api
+    name: capstreet-backend
     runtime: node
     plan: free
     branch: main
@@ -17,7 +17,7 @@ services:
     healthCheckPath: /health
     envVars:
       - key: SITE_ORIGIN
-        value: https://capstreet-store.onrender.com
+        value: https://proyecyogorras.onrender.com
       - key: SUPABASE_URL
         value: https://medshszlajttiwfpsjol.supabase.co
       - key: SUPABASE_ANON_KEY

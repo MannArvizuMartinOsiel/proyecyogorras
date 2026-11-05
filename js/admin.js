@@ -77,6 +77,22 @@ function renderProducts(items) {
   items.forEach(product => {
     const row = document.createElement("article");
     row.className = "admin-product-row";
+    const content = document.createElement("div");
+    content.className = "admin-product-row-content";
+    if (product.image_url) {
+      const image = document.createElement("img");
+      image.className = "admin-product-thumb";
+      image.src = product.image_url;
+      image.alt = `Imagen de ${product.name}`;
+      image.loading = "lazy";
+      content.append(image);
+    } else {
+      const placeholder = document.createElement("div");
+      placeholder.className = "admin-product-thumb";
+      placeholder.setAttribute("aria-hidden", "true");
+      content.append(placeholder);
+    }
+    const details = document.createElement("div");
     const heading = document.createElement("div");
     heading.className = "admin-product-row-head";
     const title = document.createElement("h4");
@@ -93,7 +109,9 @@ function renderProducts(items) {
     meta.textContent = `${product.department}${product.category ? ` · ${product.category}` : ""}`;
     const description = document.createElement("p");
     description.textContent = product.description;
-    row.append(heading, meta, description);
+    details.append(heading, meta, description);
+    content.append(details);
+    row.append(content);
     list.append(row);
   });
   container.replaceChildren(list);
@@ -129,6 +147,43 @@ document.getElementById("product-department").addEventListener("change", event =
 });
 document.getElementById("product-department").dispatchEvent(new Event("change"));
 
+const productImageInput = document.getElementById("product-image");
+const productImagePreview = document.getElementById("product-image-preview");
+const productImagePreviewImg = document.getElementById("product-image-preview-img");
+let productImagePreviewUrl = null;
+
+function clearProductImage() {
+  productImageInput.value = "";
+  productImagePreview.hidden = true;
+  productImagePreviewImg.removeAttribute("src");
+  if (productImagePreviewUrl) {
+    URL.revokeObjectURL(productImagePreviewUrl);
+    productImagePreviewUrl = null;
+  }
+}
+
+productImageInput.addEventListener("change", () => {
+  const file = productImageInput.files[0];
+  if (productImagePreviewUrl) URL.revokeObjectURL(productImagePreviewUrl);
+  productImagePreviewUrl = null;
+  if (!file) {
+    productImagePreview.hidden = true;
+    productImagePreviewImg.removeAttribute("src");
+    return;
+  }
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 4 * 1024 * 1024) {
+    clearProductImage();
+    document.getElementById("admin-product-message").textContent =
+      "Elige una imagen JPG, PNG o WebP de máximo 4 MB.";
+    return;
+  }
+  productImagePreviewUrl = URL.createObjectURL(file);
+  productImagePreviewImg.src = productImagePreviewUrl;
+  productImagePreview.hidden = false;
+  document.getElementById("admin-product-message").textContent = "";
+});
+document.getElementById("product-image-remove").addEventListener("click", clearProductImage);
+
 loginForm.addEventListener("submit", async event => {
   event.preventDefault();
   const button = document.getElementById("admin-login-button");
@@ -151,6 +206,7 @@ loginForm.addEventListener("submit", async event => {
 
 document.getElementById("admin-product-form").addEventListener("submit", async event => {
   event.preventDefault();
+  const form = event.currentTarget;
   const button = document.getElementById("product-save-button");
   const message = document.getElementById("admin-product-message");
   setBusy(button, true, "Guardando...");
@@ -159,7 +215,21 @@ document.getElementById("admin-product-form").addEventListener("submit", async e
     const { data, error } = await adminSupabase.auth.getSession();
     if (error) throw error;
     if (!data.session) throw new Error("Tu sesión terminó. Inicia sesión de nuevo.");
-    const formData = new FormData(event.currentTarget);
+    const formData = new FormData(form);
+    const imageFile = productImageInput.files[0];
+    let imageData = null;
+    if (imageFile) {
+      if (!["image/jpeg", "image/png", "image/webp"].includes(imageFile.type) || imageFile.size > 4 * 1024 * 1024) {
+        throw new Error("Elige una imagen JPG, PNG o WebP de máximo 4 MB.");
+      }
+      const imageBuffer = new Uint8Array(await imageFile.arrayBuffer());
+      const chunks = [];
+      for (let offset = 0; offset < imageBuffer.length; offset += 0x8000) {
+        chunks.push(String.fromCharCode(...imageBuffer.subarray(offset, offset + 0x8000)));
+      }
+      const binary = chunks.join("");
+      imageData = `data:${imageFile.type};base64,${btoa(binary)}`;
+    }
     const result = await adminRequest("/api/admin/products", data.session, {
       method: "POST",
       body: JSON.stringify({
@@ -168,10 +238,12 @@ document.getElementById("admin-product-form").addEventListener("submit", async e
         type: formData.get("type"),
         category: formData.get("category"),
         price: Number(formData.get("price")),
-        description: formData.get("description")
+        description: formData.get("description"),
+        imageData
       })
     });
-    event.currentTarget.reset();
+    form.reset();
+    clearProductImage();
     document.getElementById("product-department").dispatchEvent(new Event("change"));
     message.textContent = `${result.product.name} se agregó correctamente.`;
     await loadAdminProducts(data.session);
