@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: capstreet
+    runtime: static
+    branch: main
+    buildCommand: ""
+    staticPublishPath: .
