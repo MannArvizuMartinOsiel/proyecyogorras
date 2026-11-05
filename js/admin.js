@@ -145,8 +145,18 @@ function renderProducts(items, { readOnly = false } = {}) {
 
 async function loadAdminProducts(session) {
   const result = await adminRequest("/api/admin/products", session);
-  renderProducts(result.products, { readOnly: result.source === "bundled" });
-  document.getElementById("admin-product-message").textContent = result.warning || "";
+  const readOnly = result.source === "bundled";
+  renderProducts(result.products, { readOnly });
+  setProductFormReadOnly(readOnly);
+  document.getElementById("admin-catalog-message").textContent = result.warning || "";
+}
+
+function setProductFormReadOnly(readOnly) {
+  const form = document.getElementById("admin-product-form");
+  form.querySelectorAll("input, select, textarea, button").forEach(control => {
+    control.disabled = readOnly;
+  });
+  document.getElementById("product-cancel-edit").disabled = false;
 }
 
 async function showDashboard(session) {
@@ -154,7 +164,7 @@ async function showDashboard(session) {
   loginSection.hidden = true;
   dashboard.hidden = false;
   showLoginMessage("");
-  const message = document.getElementById("admin-product-message");
+  const message = document.getElementById("admin-catalog-message");
   message.textContent = "";
   try {
     await loadAdminProducts(session);
@@ -165,7 +175,12 @@ async function showDashboard(session) {
       showLoginMessage(error.message);
       return;
     }
-    message.textContent = `La sesión es válida, pero no se pudo cargar el catálogo: ${error.message}`;
+    const bundledProducts = window.CAPSTREET_PRODUCTS;
+    if (Array.isArray(bundledProducts) && bundledProducts.length) {
+      renderProducts(bundledProducts, { readOnly: true });
+      setProductFormReadOnly(true);
+    }
+    message.textContent = `El servidor no pudo cargar el catálogo: ${error.message}. Se muestran los productos originales en modo de solo lectura. Verifica la conexión de Supabase y vuelve a cargar el panel.`;
   }
 }
 
@@ -363,7 +378,9 @@ document.getElementById("admin-product-form").addEventListener("submit", async e
     const productName = result.product.name;
     setBusy(button, false);
     resetProductForm();
-    message.textContent = `${productName} ${action} correctamente.`;
+    message.textContent = result.warning
+      ? `${productName}: ${result.warning}`
+      : `${productName} ${action} correctamente.`;
     try {
       await loadAdminProducts(data.session);
     } catch (error) {

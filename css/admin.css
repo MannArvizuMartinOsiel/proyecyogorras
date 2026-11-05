@@ -35,6 +35,8 @@
 .admin-layout { display: grid; grid-template-columns: minmax(270px, .75fr) minmax(0, 1.25fr); align-items: start; gap: 18px; }
 .admin-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .admin-list-heading h3 { margin-bottom: 0; }
+.admin-catalog-message { margin: 14px 0 0; color: #7a4c13; font-size: 12px; line-height: 1.6; }
+.admin-catalog-message:empty { display: none; }
 .admin-product-rows { display: grid; gap: 10px; margin-top: 18px; }
 .admin-product-row { padding: 14px 0; border-top: 1px solid var(--line); }
 .admin-product-row-content { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 13px; }

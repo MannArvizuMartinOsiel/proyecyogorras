@@ -572,13 +572,11 @@ app.get("/api/payment-options", (_req, res) => {
 
 app.get("/api/products", async (_req, res) => {
   try {
-    return res.json({ products: await getProductCatalog() });
+    const catalog = await getProductCatalog();
+    return res.json({ products: catalog, ...(!adminClient ? { source: "bundled" } : {}) });
   } catch (error) {
-    if (error.code === "SUPABASE_SERVICE_ROLE_KEY_REJECTED") {
-      return res.json({ products, source: "bundled" });
-    }
     console.error("Could not load product catalog.", error);
-    return res.status(503).json({ error: "No pudimos cargar el catálogo actualizado." });
+    return res.json({ products, source: "bundled" });
   }
 });
 
@@ -590,35 +588,36 @@ app.get("/api/admin/products", async (req, res) => {
     if (error.code !== "SUPABASE_SERVICE_ROLE_KEY_REJECTED") {
       console.error("Could not load admin product catalog.", error);
     }
-    if (error.code === "CATALOG_MIGRATION_REQUIRED") {
-      return res.json({
-        products,
-        source: "bundled",
-        warning: `${error.message} Se muestran los productos originales; las acciones de edición y eliminación estarán disponibles al completar la migración.`
-      });
-    }
-    if (error.code === "SUPABASE_SERVICE_ROLE_KEY_REJECTED") {
-      return res.status(503).json({
-        error: "Supabase rechazó la clave secreta del servidor. Actualiza SUPABASE_SERVICE_ROLE_KEY en Render."
-      });
-    }
-    return res.status(503).json({
-      error: error.message || "No pudimos cargar el catálogo. Revisa la configuración y los permisos de Supabase."
+    const cause = error.code === "SUPABASE_SERVICE_ROLE_KEY_REJECTED"
+      ? "Supabase rechazó SUPABASE_SERVICE_ROLE_KEY. Configura la clave secreta del mismo proyecto en Render."
+      : error.code === "CATALOG_MIGRATION_REQUIRED"
+        ? error.message
+        : "Revisa los registros del servicio capstreet-backend y las credenciales de Supabase.";
+    return res.json({
+      products,
+      source: "bundled",
+      warning: `${cause} Se muestran los productos originales en solo lectura. Para agregar, editar o quitar productos, corrige la conexión y vuelve a cargar el panel.`
     });
   }
 });
 
 app.post("/api/admin/products", express.json({ limit: "6mb" }), async (req, res) => {
   let uploadedImagePath = null;
+  let imageWarning = null;
   try {
     if (!await getAdminUser(req, res)) return;
     const validated = validateAdminProduct(req.body);
     if (validated.error) return res.status(400).json({ error: validated.error });
     let imageUrl = null;
     if (req.body.imageData) {
-      const upload = await uploadProductImage(req.body.imageData);
-      uploadedImagePath = upload.path;
-      imageUrl = upload.url;
+      try {
+        const upload = await uploadProductImage(req.body.imageData);
+        uploadedImagePath = upload.path;
+        imageUrl = upload.url;
+      } catch (error) {
+        if (error.status !== 503) throw error;
+        imageWarning = error.message;
+      }
     }
     const { data, error } = await adminClient.from("admin_products").insert({
       ...validated.product,
@@ -626,7 +625,10 @@ app.post("/api/admin/products", express.json({ limit: "6mb" }), async (req, res)
     }).select("id,department,category,type,name,description,price,color,brim,patch,label,image_url").single();
     if (error) throw error;
     uploadedImagePath = null;
-    return res.status(201).json({ product: formatAdminProduct(data) });
+    return res.status(201).json({
+      product: formatAdminProduct(data),
+      ...(imageWarning ? { warning: `El artículo se guardó, pero no se pudo subir la imagen: ${imageWarning}` } : {})
+    });
   } catch (error) {
     console.error("Could not create admin product.", error);
     if (uploadedImagePath && adminClient) {
@@ -650,6 +652,7 @@ app.post("/api/admin/products", express.json({ limit: "6mb" }), async (req, res)
 
 app.put("/api/admin/products/:id", express.json({ limit: "6mb" }), async (req, res) => {
   let uploadedImagePath = null;
+  let imageWarning = null;
   try {
     if (!await getAdminUser(req, res)) return;
     const id = Number(req.params.id);
@@ -664,9 +667,14 @@ app.put("/api/admin/products/:id", express.json({ limit: "6mb" }), async (req, r
 
     let imageUrl = current.image_url || null;
     if (req.body.imageData) {
-      const upload = await uploadProductImage(req.body.imageData);
-      uploadedImagePath = upload.path;
-      imageUrl = upload.url;
+      try {
+        const upload = await uploadProductImage(req.body.imageData);
+        uploadedImagePath = upload.path;
+        imageUrl = upload.url;
+      } catch (error) {
+        if (error.status !== 503) throw error;
+        imageWarning = error.message;
+      }
     } else if (req.body.removeImage === true) {
       imageUrl = null;
     }
@@ -687,7 +695,10 @@ app.put("/api/admin/products/:id", express.json({ limit: "6mb" }), async (req, r
 
     uploadedImagePath = null;
     if (current.image_url && current.image_url !== imageUrl) await removeProductImage(current.image_url);
-    return res.json({ product: updatedProduct });
+    return res.json({
+      product: updatedProduct,
+      ...(imageWarning ? { warning: `Los cambios se guardaron, pero no se pudo subir la nueva imagen: ${imageWarning}` } : {})
+    });
   } catch (error) {
     console.error("Could not update admin product.", error);
     if (uploadedImagePath && adminClient) {

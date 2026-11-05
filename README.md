@@ -17,7 +17,9 @@ Stripe aloja la captura de datos de tarjeta; PayPal redirige a su propio sitio. 
 - Ejecuta `supabase-schema.sql` en Supabase para crear y actualizar las tablas privadas `admin_products` y `admin_product_overrides`, junto con el bucket de imágenes. Vuelve a ejecutar el archivo después de cada cambio del esquema del catálogo.
 - En Render, configura `ADMIN_EMAILS` con los correos autorizados, separados por comas. Cada cuenta debe existir en Supabase Auth y tener el correo confirmado. El servidor valida la sesión y la lista autorizada; no confíes en ocultar la URL como medida de acceso.
 - Abre `/admin.html`, inicia sesión y agrega, edita o quita artículos. Los cambios se reflejan en la tienda y en el checkout; los productos iniciales se quitan de forma lógica para conservar sus datos relacionados.
+- Si Supabase no puede cargar el catálogo, el panel muestra los productos iniciales como solo lectura y explica el error; las operaciones de catálogo requieren que las dos tablas estén creadas y que Render esté ejecutando la versión actual del backend.
 - Al agregar o editar artículos se puede subir, reemplazar o quitar una imagen JPG, PNG o WebP de hasta 4 MB. Se guarda en el bucket público `product-images` de Supabase Storage y aparece en la tienda. Los artículos sin imagen conservan la ilustración predeterminada.
+- Si la imagen no puede subirse por un error de Storage, guardar el artículo o los demás cambios continúa sin la nueva imagen y el panel avisa del problema.
 
 ## Variables de entorno de Render
 

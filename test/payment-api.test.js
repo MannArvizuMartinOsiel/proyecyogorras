@@ -109,6 +109,7 @@ test("the API remains available and disables checkout when payment credentials a
   const catalogResult = await catalog.json();
   assert.equal(catalogResult.products.length, 20);
   assert.equal(catalogResult.products[0].name, "La Clásica");
+  assert.equal(catalogResult.source, "bundled");
 
   const unavailableAdmin = await fetch(`http://127.0.0.1:${port}/api/admin/products`);
   assert.equal(unavailableAdmin.status, 503);
