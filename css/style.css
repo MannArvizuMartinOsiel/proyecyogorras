@@ -635,7 +635,10 @@
     .wishlist-choose { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
     .wishlist-remove { align-self: start; color: var(--muted); }
     .wishlist-remove:hover { color: var(--ink); text-decoration: underline; }
-    .wishlist-continue { width: 100%; flex: 0 0 auto; margin-top: 16px; }
+    .wishlist-buy, .wishlist-continue { width: 100%; flex: 0 0 auto; }
+    .wishlist-buy { margin-top: 16px; }
+    .wishlist-buy:disabled { opacity: .45; cursor: not-allowed; }
+    .wishlist-continue { margin-top: 8px; }
     .cart-drawer {
       position: fixed;
       z-index: 40;

@@ -220,6 +220,9 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       const count = favorites.size;
       document.getElementById("wishlist-count").textContent = count;
       document.getElementById("wishlist-heading-count").textContent = `(${count})`;
+      const buyButton = document.getElementById("wishlist-buy");
+      buyButton.disabled = count === 0;
+      buyButton.textContent = count ? `Comprar lista de deseos (${count})` : "Comprar lista de deseos";
       const list = document.getElementById("wishlist-items");
       if (!count) {
         list.innerHTML = '<div class="wishlist-empty"><span class="wishlist-empty-icon">♡</span><h3>Tu lista está vacía</h3><p>Guarda aquí las piezas que te gusten para encontrarlas fácilmente después.</p></div>';
@@ -531,6 +534,23 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
     });
     document.getElementById("close-wishlist").addEventListener("click", () => setWishlistOpen(false));
     document.getElementById("wishlist-continue").addEventListener("click", () => setWishlistOpen(false));
+    document.getElementById("wishlist-buy").addEventListener("click", () => {
+      if (!favorites.size) return;
+      for (const id of favorites) {
+        const product = products.find(item => item.id === id);
+        if (!product) continue;
+        const variant = getVariant(product);
+        const key = variantKey(id, variant.color.id, variant.size);
+        cart.set(key, Math.min(99, (cart.get(key) || 0) + 1));
+      }
+      appliedPromotion = null;
+      document.getElementById("promo-code").value = "";
+      updatePromotionMessage("", "");
+      renderCart();
+      setWishlistOpen(false);
+      setCartOpen(true);
+      showToast("Tu lista de deseos se agregó al carrito");
+    });
     document.getElementById("wishlist-overlay").addEventListener("click", event => {
       if (event.target === event.currentTarget) setWishlistOpen(false);
     });
