@@ -111,8 +111,29 @@ alter table public.admin_products
 
 alter table public.admin_products enable row level security;
 revoke all on public.admin_products from anon, authenticated;
-grant select, insert on public.admin_products to service_role;
+grant select, insert, update, delete on public.admin_products to service_role;
 grant usage, select on sequence public.admin_products_id_seq to service_role;
+
+create table if not exists public.admin_product_overrides (
+  id bigint primary key,
+  department text not null check (department in ('Gorras', 'Ropa', 'Joyería', 'Tenis')),
+  category text,
+  type text not null check (type in ('cap', 'shirt', 'hoodie', 'chain', 'bracelet', 'sneaker')),
+  name text not null check (char_length(name) between 1 and 80),
+  description text not null check (char_length(description) between 1 and 300),
+  price integer not null check (price between 1 and 1000000),
+  color text not null,
+  brim text not null,
+  patch text,
+  label text not null,
+  image_url text,
+  is_deleted boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.admin_product_overrides enable row level security;
+revoke all on public.admin_product_overrides from anon, authenticated;
+grant select, insert, update on public.admin_product_overrides to service_role;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (

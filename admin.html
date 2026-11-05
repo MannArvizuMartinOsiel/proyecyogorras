@@ -17,7 +17,7 @@
     <section class="admin-intro">
       <p class="eyebrow">CAPSTREET / Administración</p>
       <h1>Tu catálogo,<br><em>bajo control.</em></h1>
-      <p>Agrega artículos con su precio y descripción. Los cambios se reflejan en la tienda y en el checkout.</p>
+      <p>Agrega, edita o quita artículos. Los cambios se reflejan en la tienda y en el checkout.</p>
     </section>
 
     <section class="admin-login admin-card" id="admin-login">
@@ -27,7 +27,10 @@
         <label for="admin-email">Correo electrónico</label>
         <input id="admin-email" name="email" type="email" autocomplete="username" required>
         <label for="admin-password">Contraseña</label>
-        <input id="admin-password" name="password" type="password" autocomplete="current-password" required>
+        <div class="admin-password-control">
+          <input id="admin-password" name="password" type="password" autocomplete="current-password" required>
+          <button type="button" class="admin-password-toggle" id="admin-password-toggle" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button>
+        </div>
         <button class="button" type="submit" id="admin-login-button">Entrar</button>
       </form>
       <p class="admin-message" id="admin-login-message" role="status" aria-live="polite"></p>
@@ -43,7 +46,7 @@
       </div>
       <div class="admin-layout">
         <form class="admin-card admin-product-form" id="admin-product-form">
-          <h3>Agregar artículo</h3>
+          <h3 id="product-form-title">Agregar artículo</h3>
           <label for="product-name">Nombre</label>
           <input id="product-name" name="name" type="text" maxlength="80" required>
           <label for="product-department">Departamento</label>
@@ -67,12 +70,15 @@
           </div>
           <label for="product-description">Descripción</label>
           <textarea id="product-description" name="description" rows="4" maxlength="300" required></textarea>
-          <button class="button" type="submit" id="product-save-button">Guardar artículo</button>
+          <div class="admin-form-actions">
+            <button class="button" type="submit" id="product-save-button">Guardar artículo</button>
+            <button class="admin-cancel-edit" type="button" id="product-cancel-edit" hidden>Cancelar edición</button>
+          </div>
           <p class="admin-message" id="admin-product-message" role="status" aria-live="polite"></p>
         </form>
         <section class="admin-card admin-product-list" aria-labelledby="admin-product-list-title">
           <div class="admin-list-heading">
-            <h3 id="admin-product-list-title">Artículos agregados</h3>
+            <h3 id="admin-product-list-title">Todo el catálogo</h3>
             <button type="button" class="admin-refresh" id="admin-refresh">Actualizar</button>
           </div>
           <div id="admin-products" aria-live="polite"></div>

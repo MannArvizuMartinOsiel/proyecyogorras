@@ -126,7 +126,7 @@ app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
   }
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Stripe-Signature, PayPal-Auth-Algo, PayPal-Cert-Url, PayPal-Transmission-Id, PayPal-Transmission-Sig, PayPal-Transmission-Time");
   res.setHeader("Cache-Control", "no-store");
   if (req.method === "OPTIONS") return res.sendStatus(204);
@@ -222,6 +222,17 @@ function formatAdminProduct(row) {
   };
 }
 
+function catalogMigrationError(message) {
+  const error = new Error(message);
+  error.code = "CATALOG_MIGRATION_REQUIRED";
+  return error;
+}
+
+function isCatalogSchemaError(error) {
+  return ["42P01", "PGRST204", "PGRST205"].includes(error?.code) ||
+    /admin_product_overrides|admin_products|image_url|schema cache/i.test(error?.message || "");
+}
+
 async function getProductCatalog() {
   if (!adminClient) return products;
   if (serviceRoleKeyRejected) {
@@ -229,21 +240,147 @@ async function getProductCatalog() {
     error.code = "SUPABASE_SERVICE_ROLE_KEY_REJECTED";
     throw error;
   }
-  const { data, error } = await adminClient
+  const [{ data: customRows, error: customError }, { data: overrideRows, error: overrideError }] = await Promise.all([
+    adminClient
     .from("admin_products")
     .select("id,department,category,type,name,description,price,color,brim,patch,label,image_url")
-    .order("id", { ascending: true });
-  if (error) {
-    if (/invalid api key/i.test(`${error.message || ""} ${error.hint || ""}`)) {
+    .order("id", { ascending: true }),
+    adminClient
+      .from("admin_product_overrides")
+      .select("id,department,category,type,name,description,price,color,brim,patch,label,image_url,is_deleted")
+  ]);
+  const catalogError = customError || overrideError;
+  if (catalogError) {
+    if (/invalid api key/i.test(`${catalogError.message || ""} ${catalogError.hint || ""}`)) {
       serviceRoleKeyRejected = true;
       console.error("Supabase rechazó SUPABASE_SERVICE_ROLE_KEY. Verifica que sea la clave secreta del proyecto CAPSTREET en Render.");
       const configurationError = new Error("Supabase rechazó SUPABASE_SERVICE_ROLE_KEY. Verifica la clave en Render.");
       configurationError.code = "SUPABASE_SERVICE_ROLE_KEY_REJECTED";
       throw configurationError;
     }
-    throw error;
+    if (isCatalogSchemaError(catalogError)) {
+      throw catalogMigrationError("Falta actualizar el esquema del catálogo en Supabase. Ejecuta el archivo supabase-schema.sql y vuelve a desplegar.");
+    }
+    throw catalogError;
   }
-  return [...products, ...data.map(formatAdminProduct)];
+  const overrides = new Map(overrideRows.map(row => [Number(row.id), row]));
+  const baseCatalog = products.flatMap(product => {
+    const override = overrides.get(product.id);
+    if (override?.is_deleted) return [];
+    const optionTemplate = products.find(item => item.type === (override?.type || product.type)) || product;
+    return [{
+      ...product,
+      ...(override || {}),
+      id: product.id,
+      image_url: override?.image_url ?? product.image_url ?? null,
+      colorOptions: optionTemplate.colorOptions,
+      sizeOptions: optionTemplate.sizeOptions
+    }];
+  });
+  return [...baseCatalog, ...customRows.map(formatAdminProduct)];
+}
+
+function validateAdminProduct(body) {
+  const { name, description, price, type, category } = body || {};
+  const department = PRODUCT_TYPES[type];
+  if (
+    typeof name !== "string" || !name.trim() || name.trim().length > 80 ||
+    typeof description !== "string" || !description.trim() || description.trim().length > 300 ||
+    !department || !Number.isSafeInteger(price) || price < 1 || price > 1000000 ||
+    (category !== undefined && category !== null &&
+      (typeof category !== "string" || category.trim().length > 40))
+  ) {
+    return { error: "Revisa nombre, departamento, tipo, categoría y precio del artículo." };
+  }
+  const template = products.find(product => product.type === type);
+  return {
+    product: {
+      department,
+      category: typeof category === "string" ? category.trim() || null : null,
+      type,
+      name: name.trim(),
+      description: description.trim(),
+      price,
+      color: template.color,
+      brim: template.brim,
+      patch: template.patch || null,
+      label: template.label
+    }
+  };
+}
+
+function requestError(message, status = 400) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+async function uploadProductImage(imageData) {
+  if (typeof imageData !== "string") {
+    throw requestError("La imagen del producto no es válida.");
+  }
+  const match = imageData.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match) throw requestError("Usa una imagen JPG, PNG o WebP válida.");
+  const [, contentType, encodedImage] = match;
+  const imageBuffer = Buffer.from(encodedImage, "base64");
+  const imageType = PRODUCT_IMAGE_TYPES.get(contentType);
+  if (
+    imageBuffer.length === 0 ||
+    imageBuffer.length > MAX_PRODUCT_IMAGE_BYTES ||
+    !imageType.signature(imageBuffer)
+  ) {
+    throw requestError("La imagen está vacía, supera 4 MB o su contenido no coincide con el formato.");
+  }
+
+  const path = `${crypto.randomUUID()}.${imageType.extension}`;
+  const { error } = await adminClient.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, imageBuffer, {
+    contentType,
+    cacheControl: "31536000",
+    upsert: false
+  });
+  if (error) {
+    console.error("Could not upload admin product image.", error);
+    throw requestError("No pudimos subir la imagen. Verifica el bucket product-images en Supabase.", 503);
+  }
+  return {
+    path,
+    url: adminClient.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl
+  };
+}
+
+async function removeProductImage(imageUrl) {
+  if (!adminClient || typeof imageUrl !== "string") return;
+  const publicPrefix = `${supabaseUrl}/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/`;
+  if (!imageUrl.startsWith(publicPrefix)) return;
+  let path;
+  try {
+    path = decodeURIComponent(new URL(imageUrl).pathname.slice(
+      new URL(publicPrefix).pathname.length
+    ));
+  } catch {
+    return;
+  }
+  if (!path || path.includes("..")) return;
+  const { error } = await adminClient.storage.from(PRODUCT_IMAGE_BUCKET).remove([path]);
+  if (error) console.error("Could not remove product image from Supabase Storage.", error);
+}
+
+function catalogRow(product, isDeleted = false) {
+  return {
+    id: product.id,
+    department: product.department,
+    category: product.category || null,
+    type: product.type,
+    name: product.name,
+    description: product.description,
+    price: product.price,
+    color: product.color,
+    brim: product.brim,
+    patch: product.patch || null,
+    label: product.label,
+    image_url: product.image_url || null,
+    is_deleted: isDeleted
+  };
 }
 
 function getOrderItems(items, catalog) {
@@ -423,8 +560,7 @@ app.get("/api/products", async (_req, res) => {
 app.get("/api/admin/products", async (req, res) => {
   try {
     if (!await getAdminUser(req, res)) return;
-    const catalog = await getProductCatalog();
-    return res.json({ products: catalog.filter(product => !products.some(item => item.id === product.id)) });
+    return res.json({ products: await getProductCatalog() });
   } catch (error) {
     if (error.code !== "SUPABASE_SERVICE_ROLE_KEY_REJECTED") {
       console.error("Could not load admin product catalog.", error);
@@ -434,6 +570,9 @@ app.get("/api/admin/products", async (req, res) => {
         error: "Supabase rechazó la clave secreta del servidor. Actualiza SUPABASE_SERVICE_ROLE_KEY en Render."
       });
     }
+    if (error.code === "CATALOG_MIGRATION_REQUIRED") {
+      return res.status(503).json({ error: error.message });
+    }
     return res.status(503).json({ error: "No pudimos cargar los artículos. Verifica la configuración del catálogo." });
   }
 });
@@ -442,65 +581,16 @@ app.post("/api/admin/products", express.json({ limit: "6mb" }), async (req, res)
   let uploadedImagePath = null;
   try {
     if (!await getAdminUser(req, res)) return;
-    const { name, description, price, type, category, imageData } = req.body || {};
-    const department = PRODUCT_TYPES[type];
-    if (
-      typeof name !== "string" || !name.trim() || name.trim().length > 80 ||
-      typeof description !== "string" || !description.trim() || description.trim().length > 300 ||
-      !department || !Number.isSafeInteger(price) || price < 1 || price > 1000000 ||
-      (category !== undefined && (typeof category !== "string" || category.trim().length > 40))
-    ) {
-      return res.status(400).json({ error: "Revisa nombre, descripción, categoría, tipo y precio del artículo." });
-    }
-
+    const validated = validateAdminProduct(req.body);
+    if (validated.error) return res.status(400).json({ error: validated.error });
     let imageUrl = null;
-    if (imageData !== undefined && imageData !== null && imageData !== "") {
-      if (typeof imageData !== "string") {
-        return res.status(400).json({ error: "La imagen del producto no es válida." });
-      }
-      const match = imageData.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/);
-      if (!match) {
-        return res.status(400).json({ error: "Usa una imagen JPG, PNG o WebP válida." });
-      }
-      const [, contentType, encodedImage] = match;
-      const imageBuffer = Buffer.from(encodedImage, "base64");
-      const imageType = PRODUCT_IMAGE_TYPES.get(contentType);
-      if (
-        imageBuffer.length === 0 ||
-        imageBuffer.length > MAX_PRODUCT_IMAGE_BYTES ||
-        !imageType.signature(imageBuffer)
-      ) {
-        return res.status(400).json({ error: "La imagen está vacía, supera 4 MB o su contenido no coincide con el formato." });
-      }
-      uploadedImagePath = `${crypto.randomUUID()}.${imageType.extension}`;
-      const { error: uploadError } = await adminClient.storage
-        .from(PRODUCT_IMAGE_BUCKET)
-        .upload(uploadedImagePath, imageBuffer, {
-          contentType,
-          cacheControl: "31536000",
-          upsert: false
-        });
-      if (uploadError) {
-        console.error("Could not upload admin product image.", uploadError);
-        return res.status(503).json({
-          error: "No pudimos subir la imagen. Verifica que el bucket product-images exista en Supabase."
-        });
-      }
-      imageUrl = adminClient.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(uploadedImagePath).data.publicUrl;
+    if (req.body.imageData) {
+      const upload = await uploadProductImage(req.body.imageData);
+      uploadedImagePath = upload.path;
+      imageUrl = upload.url;
     }
-
-    const template = products.find(product => product.type === type);
     const { data, error } = await adminClient.from("admin_products").insert({
-      department,
-      category: category?.trim() || null,
-      type,
-      name: name.trim(),
-      description: description.trim(),
-      price,
-      color: template.color,
-      brim: template.brim,
-      patch: template.patch || null,
-      label: template.label,
+      ...validated.product,
       image_url: imageUrl
     }).select("id,department,category,type,name,description,price,color,brim,patch,label,image_url").single();
     if (error) throw error;
@@ -514,7 +604,104 @@ app.post("/api/admin/products", express.json({ limit: "6mb" }), async (req, res)
         .remove([uploadedImagePath]);
       if (cleanupError) console.error("Could not remove orphaned admin product image.", cleanupError);
     }
-    return res.status(503).json({ error: "No pudimos guardar el artículo. Intenta de nuevo." });
+    if (isCatalogSchemaError(error)) {
+      return res.status(503).json({
+        error: "Falta actualizar el catálogo en Supabase. Ejecuta supabase-schema.sql y vuelve a intentar."
+      });
+    }
+    return res.status(error.status || 503).json({
+      error: error.code === "CATALOG_MIGRATION_REQUIRED"
+        ? error.message
+        : error.message || "No pudimos guardar el artículo. Intenta de nuevo."
+    });
+  }
+});
+
+app.put("/api/admin/products/:id", express.json({ limit: "6mb" }), async (req, res) => {
+  let uploadedImagePath = null;
+  try {
+    if (!await getAdminUser(req, res)) return;
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "El artículo indicado no es válido." });
+    const current = (await getProductCatalog()).find(product => product.id === id);
+    if (!current) return res.status(404).json({ error: "No encontramos ese artículo en el catálogo." });
+    const validated = validateAdminProduct(req.body);
+    if (validated.error) return res.status(400).json({ error: validated.error });
+    if (typeof req.body.removeImage !== "boolean" && req.body.removeImage !== undefined) {
+      return res.status(400).json({ error: "La opción para quitar la imagen no es válida." });
+    }
+
+    let imageUrl = current.image_url || null;
+    if (req.body.imageData) {
+      const upload = await uploadProductImage(req.body.imageData);
+      uploadedImagePath = upload.path;
+      imageUrl = upload.url;
+    } else if (req.body.removeImage === true) {
+      imageUrl = null;
+    }
+    const updatedProduct = {
+      ...current,
+      ...validated.product,
+      id,
+      image_url: imageUrl
+    };
+    const isBuiltIn = products.some(product => product.id === id);
+    const { error } = isBuiltIn
+      ? await adminClient.from("admin_product_overrides").upsert(catalogRow(updatedProduct), { onConflict: "id" })
+      : await adminClient.from("admin_products").update({
+        ...validated.product,
+        image_url: imageUrl
+      }).eq("id", id).select("id").single();
+    if (error) throw error;
+
+    uploadedImagePath = null;
+    if (current.image_url && current.image_url !== imageUrl) await removeProductImage(current.image_url);
+    return res.json({ product: updatedProduct });
+  } catch (error) {
+    console.error("Could not update admin product.", error);
+    if (uploadedImagePath && adminClient) {
+      const { error: cleanupError } = await adminClient.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploadedImagePath]);
+      if (cleanupError) console.error("Could not remove orphaned admin product image.", cleanupError);
+    }
+    if (isCatalogSchemaError(error)) {
+      return res.status(503).json({
+        error: "Falta actualizar el catálogo en Supabase. Ejecuta supabase-schema.sql y vuelve a intentar."
+      });
+    }
+    return res.status(error.status || 503).json({
+      error: error.code === "CATALOG_MIGRATION_REQUIRED"
+        ? error.message
+        : error.message || "No pudimos actualizar el artículo. Intenta de nuevo."
+    });
+  }
+});
+
+app.delete("/api/admin/products/:id", async (req, res) => {
+  try {
+    if (!await getAdminUser(req, res)) return;
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "El artículo indicado no es válido." });
+    const current = (await getProductCatalog()).find(product => product.id === id);
+    if (!current) return res.status(404).json({ error: "No encontramos ese artículo en el catálogo." });
+
+    const result = products.some(product => product.id === id)
+      ? await adminClient.from("admin_product_overrides").upsert(catalogRow(current, true), { onConflict: "id" })
+      : await adminClient.from("admin_products").delete().eq("id", id);
+    if (result.error) throw result.error;
+    await removeProductImage(current.image_url);
+    return res.status(204).end();
+  } catch (error) {
+    console.error("Could not delete admin product.", error);
+    if (isCatalogSchemaError(error)) {
+      return res.status(503).json({
+        error: "Falta actualizar el catálogo en Supabase. Ejecuta supabase-schema.sql y vuelve a intentar."
+      });
+    }
+    return res.status(error.status || 503).json({
+      error: error.code === "CATALOG_MIGRATION_REQUIRED"
+        ? error.message
+        : error.message || "No pudimos quitar el artículo. Intenta de nuevo."
+    });
   }
 });
 

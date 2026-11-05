@@ -20,6 +20,9 @@ const loginForm = document.getElementById("admin-login-form");
 const loginMessage = document.getElementById("admin-login-message");
 const loginSection = document.getElementById("admin-login");
 const dashboard = document.getElementById("admin-dashboard");
+let adminProductCache = [];
+let editingProduct = null;
+let removeExistingImage = false;
 
 function showLoginMessage(message) {
   loginMessage.textContent = message;
@@ -64,6 +67,7 @@ async function adminRequest(path, session, options = {}) {
 }
 
 function renderProducts(items) {
+  adminProductCache = items;
   const container = document.getElementById("admin-products");
   if (!items.length) {
     const empty = document.createElement("p");
@@ -109,7 +113,19 @@ function renderProducts(items) {
     meta.textContent = `${product.department}${product.category ? ` · ${product.category}` : ""}`;
     const description = document.createElement("p");
     description.textContent = product.description;
-    details.append(heading, meta, description);
+    const actions = document.createElement("div");
+    actions.className = "admin-product-row-actions";
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.dataset.editProduct = product.id;
+    editButton.textContent = "Editar";
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "admin-delete-product";
+    deleteButton.dataset.deleteProduct = product.id;
+    deleteButton.textContent = "Quitar";
+    actions.append(editButton, deleteButton);
+    details.append(heading, meta, description, actions);
     content.append(details);
     row.append(content);
     list.append(row);
@@ -134,6 +150,50 @@ async function showDashboard(session) {
     loginSection.hidden = false;
     showLoginMessage(error.message);
   }
+}
+
+function showImagePreview(source) {
+  if (productImagePreviewUrl) {
+    URL.revokeObjectURL(productImagePreviewUrl);
+    productImagePreviewUrl = null;
+  }
+  productImagePreviewImg.src = source;
+  productImagePreview.hidden = false;
+}
+
+function resetProductForm() {
+  const form = document.getElementById("admin-product-form");
+  form.reset();
+  editingProduct = null;
+  removeExistingImage = false;
+  clearProductImage();
+  document.getElementById("product-department").dispatchEvent(new Event("change"));
+  document.getElementById("product-form-title").textContent = "Agregar artículo";
+  document.getElementById("product-save-button").textContent = "Guardar artículo";
+  document.getElementById("product-cancel-edit").hidden = true;
+}
+
+function beginProductEdit(product) {
+  editingProduct = product;
+  removeExistingImage = false;
+  document.getElementById("product-form-title").textContent = `Editar: ${product.name}`;
+  document.getElementById("product-name").value = product.name;
+  document.getElementById("product-department").value = product.department;
+  document.getElementById("product-department").dispatchEvent(new Event("change"));
+  document.getElementById("product-type").value = product.type;
+  document.getElementById("product-category").value = product.category || "";
+  document.getElementById("product-price").value = product.price;
+  document.getElementById("product-description").value = product.description;
+  clearProductImage();
+  if (product.image_url) showImagePreview(product.image_url);
+  else {
+    productImagePreview.hidden = true;
+    productImagePreviewImg.removeAttribute("src");
+  }
+  document.getElementById("product-save-button").textContent = "Guardar cambios";
+  document.getElementById("product-cancel-edit").hidden = false;
+  document.getElementById("admin-product-message").textContent = "";
+  document.getElementById("product-name").focus();
 }
 
 document.getElementById("product-department").addEventListener("change", event => {
@@ -167,8 +227,11 @@ productImageInput.addEventListener("change", () => {
   if (productImagePreviewUrl) URL.revokeObjectURL(productImagePreviewUrl);
   productImagePreviewUrl = null;
   if (!file) {
-    productImagePreview.hidden = true;
-    productImagePreviewImg.removeAttribute("src");
+    if (editingProduct?.image_url && !removeExistingImage) showImagePreview(editingProduct.image_url);
+    else {
+      productImagePreview.hidden = true;
+      productImagePreviewImg.removeAttribute("src");
+    }
     return;
   }
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 4 * 1024 * 1024) {
@@ -177,12 +240,40 @@ productImageInput.addEventListener("change", () => {
       "Elige una imagen JPG, PNG o WebP de máximo 4 MB.";
     return;
   }
+  removeExistingImage = false;
   productImagePreviewUrl = URL.createObjectURL(file);
   productImagePreviewImg.src = productImagePreviewUrl;
   productImagePreview.hidden = false;
   document.getElementById("admin-product-message").textContent = "";
 });
-document.getElementById("product-image-remove").addEventListener("click", clearProductImage);
+document.getElementById("product-image-remove").addEventListener("click", () => {
+  if (productImageInput.files.length) {
+    productImageInput.value = "";
+    if (editingProduct?.image_url && !removeExistingImage) showImagePreview(editingProduct.image_url);
+    else {
+      productImagePreview.hidden = true;
+      productImagePreviewImg.removeAttribute("src");
+    }
+    return;
+  }
+  if (editingProduct?.image_url && !removeExistingImage) {
+    removeExistingImage = true;
+    productImagePreview.hidden = true;
+    productImagePreviewImg.removeAttribute("src");
+    document.getElementById("admin-product-message").textContent = "Se quitará la imagen al guardar los cambios.";
+    return;
+  }
+  clearProductImage();
+});
+
+document.getElementById("admin-password-toggle").addEventListener("click", event => {
+  const password = document.getElementById("admin-password");
+  const isVisible = password.type === "text";
+  password.type = isVisible ? "password" : "text";
+  event.currentTarget.textContent = isVisible ? "Mostrar" : "Ocultar";
+  event.currentTarget.setAttribute("aria-label", isVisible ? "Mostrar contraseña" : "Ocultar contraseña");
+  event.currentTarget.setAttribute("aria-pressed", String(!isVisible));
+});
 
 loginForm.addEventListener("submit", async event => {
   event.preventDefault();
@@ -197,6 +288,11 @@ loginForm.addEventListener("submit", async event => {
     if (error) throw error;
     await showDashboard(data.session);
     document.getElementById("admin-password").value = "";
+    document.getElementById("admin-password").type = "password";
+    const passwordToggle = document.getElementById("admin-password-toggle");
+    passwordToggle.textContent = "Mostrar";
+    passwordToggle.setAttribute("aria-label", "Mostrar contraseña");
+    passwordToggle.setAttribute("aria-pressed", "false");
   } catch (error) {
     showLoginMessage(error.message || "No pudimos iniciar sesión.");
   } finally {
@@ -230,8 +326,11 @@ document.getElementById("admin-product-form").addEventListener("submit", async e
       const binary = chunks.join("");
       imageData = `data:${imageFile.type};base64,${btoa(binary)}`;
     }
-    const result = await adminRequest("/api/admin/products", data.session, {
-      method: "POST",
+    const endpoint = editingProduct
+      ? `/api/admin/products/${encodeURIComponent(editingProduct.id)}`
+      : "/api/admin/products";
+    const result = await adminRequest(endpoint, data.session, {
+      method: editingProduct ? "PUT" : "POST",
       body: JSON.stringify({
         name: formData.get("name"),
         department: formData.get("department"),
@@ -239,18 +338,61 @@ document.getElementById("admin-product-form").addEventListener("submit", async e
         category: formData.get("category"),
         price: Number(formData.get("price")),
         description: formData.get("description"),
-        imageData
+        imageData,
+        removeImage: removeExistingImage
       })
     });
-    form.reset();
-    clearProductImage();
-    document.getElementById("product-department").dispatchEvent(new Event("change"));
-    message.textContent = `${result.product.name} se agregó correctamente.`;
-    await loadAdminProducts(data.session);
+    const action = editingProduct ? "se actualizó" : "se agregó";
+    const productName = result.product.name;
+    setBusy(button, false);
+    resetProductForm();
+    message.textContent = `${productName} ${action} correctamente.`;
+    try {
+      await loadAdminProducts(data.session);
+    } catch (error) {
+      message.textContent = `${productName} se guardó, pero no se pudo actualizar la lista: ${error.message}`;
+    }
   } catch (error) {
     message.textContent = error.message || "No pudimos guardar el artículo.";
   } finally {
     setBusy(button, false);
+  }
+});
+
+document.getElementById("product-cancel-edit").addEventListener("click", resetProductForm);
+document.getElementById("admin-products").addEventListener("click", async event => {
+  const editButton = event.target.closest("[data-edit-product]");
+  if (editButton) {
+    const product = adminProductCache.find(item => item.id === Number(editButton.dataset.editProduct));
+    if (product) beginProductEdit(product);
+    return;
+  }
+  const deleteButton = event.target.closest("[data-delete-product]");
+  if (!deleteButton) return;
+  const product = adminProductCache.find(item => item.id === Number(deleteButton.dataset.deleteProduct));
+  if (!product || !window.confirm(`¿Quitar "${product.name}" del catálogo? Esta acción no se puede deshacer desde el panel.`)) return;
+
+  const message = document.getElementById("admin-product-message");
+  setBusy(deleteButton, true, "Quitando...");
+  message.textContent = "";
+  try {
+    const { data, error } = await adminSupabase.auth.getSession();
+    if (error) throw error;
+    if (!data.session) throw new Error("Tu sesión terminó. Inicia sesión de nuevo.");
+    await adminRequest(`/api/admin/products/${encodeURIComponent(product.id)}`, data.session, {
+      method: "DELETE"
+    });
+    if (editingProduct?.id === product.id) resetProductForm();
+    message.textContent = `${product.name} se quitó del catálogo.`;
+    try {
+      await loadAdminProducts(data.session);
+    } catch (error) {
+      message.textContent = `${product.name} se quitó, pero no se pudo actualizar la lista: ${error.message}`;
+    }
+  } catch (error) {
+    message.textContent = error.message || "No pudimos quitar el artículo.";
+  } finally {
+    setBusy(deleteButton, false);
   }
 });
 
