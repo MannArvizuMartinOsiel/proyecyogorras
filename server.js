@@ -339,8 +339,33 @@ async function uploadProductImage(imageData) {
     upsert: false
   });
   if (error) {
-    console.error("Could not upload admin product image.", error);
-    throw requestError("No pudimos subir la imagen. Verifica el bucket product-images en Supabase.", 503);
+    console.error("Could not upload admin product image.", {
+      bucket: PRODUCT_IMAGE_BUCKET,
+      statusCode: error.statusCode || error.status,
+      error: error.error,
+      message: error.message
+    });
+    const storageError = `${error.error || ""} ${error.message || ""}`.toLowerCase();
+    const statusCode = Number(error.statusCode || error.status);
+    if (statusCode === 404 || storageError.includes("bucket not found")) {
+      throw requestError(
+        "No existe el bucket product-images en Supabase. Ejecuta el archivo supabase-schema.sql en el SQL Editor del proyecto correcto.",
+        503
+      );
+    }
+    if (statusCode === 401 || statusCode === 403) {
+      throw requestError(
+        "Supabase rechazó la subida. Verifica que SUPABASE_SERVICE_ROLE_KEY en Render sea la clave secreta del mismo proyecto y vuelve a desplegar.",
+        503
+      );
+    }
+    if (statusCode === 413) {
+      throw requestError("La imagen supera el límite permitido por el bucket product-images.", 413);
+    }
+    throw requestError(
+      `No se pudo subir la imagen a Supabase${Number.isFinite(statusCode) ? ` (HTTP ${statusCode})` : ""}. Revisa los logs del servicio capstreet-backend en Render.`,
+      503
+    );
   }
   return {
     path,
