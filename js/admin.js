@@ -45,7 +45,20 @@ async function adminRequest(path, session, options = {}) {
       ...options.headers
     }
   });
-  const result = await response.json();
+  const responseText = await response.text();
+  let result;
+  try {
+    result = responseText ? JSON.parse(responseText) : {};
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    if (response.status === 404) {
+      throw new Error(`No encontramos la API de administración en ${adminApiUrl}. Verifica el dominio del servicio Web en Render y que esté desplegado.`);
+    }
+    throw new Error(`La API de administración devolvió una respuesta no válida (HTTP ${response.status}).`);
+  }
+  if (response.status === 404) {
+    throw new Error(`No encontramos la API de administración en ${adminApiUrl}. Verifica el dominio del servicio Web en Render y que esté desplegado.`);
+  }
   if (!response.ok) throw new Error(result.error || "No se pudo completar la solicitud.");
   return result;
 }
