@@ -70,7 +70,7 @@ async function adminRequest(path, session, options = {}) {
   return result;
 }
 
-function renderProducts(items) {
+function renderProducts(items, { readOnly = false } = {}) {
   adminProductCache = items;
   const container = document.getElementById("admin-products");
   if (!items.length) {
@@ -123,11 +123,17 @@ function renderProducts(items) {
     editButton.type = "button";
     editButton.dataset.editProduct = product.id;
     editButton.textContent = "Editar";
+    editButton.disabled = readOnly;
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
     deleteButton.className = "admin-delete-product";
     deleteButton.dataset.deleteProduct = product.id;
     deleteButton.textContent = "Quitar";
+    deleteButton.disabled = readOnly;
+    if (readOnly) {
+      editButton.title = "Ejecuta primero la migración de Supabase.";
+      deleteButton.title = "Ejecuta primero la migración de Supabase.";
+    }
     actions.append(editButton, deleteButton);
     details.append(heading, meta, description, actions);
     content.append(details);
@@ -139,7 +145,8 @@ function renderProducts(items) {
 
 async function loadAdminProducts(session) {
   const result = await adminRequest("/api/admin/products", session);
-  renderProducts(result.products);
+  renderProducts(result.products, { readOnly: result.source === "bundled" });
+  document.getElementById("admin-product-message").textContent = result.warning || "";
 }
 
 async function showDashboard(session) {

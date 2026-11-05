@@ -590,13 +590,17 @@ app.get("/api/admin/products", async (req, res) => {
     if (error.code !== "SUPABASE_SERVICE_ROLE_KEY_REJECTED") {
       console.error("Could not load admin product catalog.", error);
     }
+    if (error.code === "CATALOG_MIGRATION_REQUIRED") {
+      return res.json({
+        products,
+        source: "bundled",
+        warning: `${error.message} Se muestran los productos originales; las acciones de edición y eliminación estarán disponibles al completar la migración.`
+      });
+    }
     if (error.code === "SUPABASE_SERVICE_ROLE_KEY_REJECTED") {
       return res.status(503).json({
         error: "Supabase rechazó la clave secreta del servidor. Actualiza SUPABASE_SERVICE_ROLE_KEY en Render."
       });
-    }
-    if (error.code === "CATALOG_MIGRATION_REQUIRED") {
-      return res.status(503).json({ error: error.message });
     }
     return res.status(503).json({
       error: error.message || "No pudimos cargar el catálogo. Revisa la configuración y los permisos de Supabase."

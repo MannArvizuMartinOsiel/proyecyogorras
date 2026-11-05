@@ -45,6 +45,7 @@
 .admin-product-row p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .admin-product-row-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
 .admin-product-row-actions button { padding: 4px 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 11px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.admin-product-row-actions button:disabled { opacity: .45; cursor: not-allowed; }
 .admin-product-row-actions .admin-delete-product { color: #a62920; }
 .admin-product-meta { margin-bottom: 5px !important; font-size: 10px !important; text-transform: uppercase; letter-spacing: .08em; }
 .admin-empty { padding: 32px 8px; color: var(--muted); font-size: 13px; text-align: center; }
