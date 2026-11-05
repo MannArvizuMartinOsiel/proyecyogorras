@@ -1,9 +1,41 @@
 const products = window.CAPSTREET_PRODUCTS;
-const CHECKOUT_API_URL = window.CAPSTREET_CONFIG?.checkoutApiUrl ||
-  (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-    ? "http://localhost:3001"
-    : "https://capstreet-api.onrender.com");
+const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+const CHECKOUT_API_URL = isLocalhost
+  ? "http://localhost:3001"
+  : window.CAPSTREET_CONFIG.checkoutApiUrl.replace(/\/+$/, "");
 const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
+const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
+
+    async function requestPaymentApi(path, options, fallbackMessage) {
+      let response;
+      try {
+        response = await fetch(`${CHECKOUT_API_URL}${path}`, options);
+      } catch (error) {
+        if (error instanceof TypeError) {
+          throw new Error(`No se pudo conectar con la API de pagos (${CHECKOUT_API_URL}). Confirma que el servicio de Render esté publicado y activo.`);
+        }
+        throw error;
+      }
+
+      let result;
+      try {
+        result = await response.json();
+      } catch (error) {
+        const message = response.status === 404
+          ? `No se encontró la API de pagos en ${CHECKOUT_API_URL}. Verifica el dominio del servicio en Render.`
+          : "La API de pagos devolvió una respuesta no válida.";
+        throw new Error(message, { cause: error });
+      }
+      if (!response.ok) {
+        const message = response.status === 404
+          ? `No se encontró la API de pagos en ${CHECKOUT_API_URL}. Verifica el dominio del servicio en Render.`
+          : result.error || fallbackMessage;
+        const apiError = new Error(message);
+        apiError.status = response.status;
+        throw apiError;
+      }
+      return result;
+    }
 
     function loadSavedCart() {
       try {
@@ -11,12 +43,25 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
         if (!savedCart) return new Map();
         const entries = JSON.parse(savedCart);
         if (!Array.isArray(entries)) throw new TypeError("El carrito guardado no es una lista válida.");
-        return new Map(entries.filter(([id, quantity]) =>
-          products.some(product => product.id === id) &&
-          Number.isInteger(quantity) &&
-          quantity > 0 &&
-          quantity <= 99
-        ));
+        return entries.reduce((saved, entry) => {
+          if (!Array.isArray(entry) || entry.length !== 2) return saved;
+          const [productRef, quantity] = entry;
+          if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) return saved;
+          const legacyProduct = typeof productRef === "number"
+            ? products.find(product => product.id === productRef)
+            : null;
+          const variant = typeof productRef === "number"
+            ? legacyProduct && {
+              product: legacyProduct,
+              color: legacyProduct.colorOptions[0],
+              size: legacyProduct.sizeOptions[0]
+            }
+            : parseCartKey(productRef);
+          if (!variant) return saved;
+          const key = variantKey(variant.product.id, variant.color.id, variant.size);
+          saved.set(key, Math.min(99, (saved.get(key) || 0) + quantity));
+          return saved;
+        }, new Map());
       } catch (error) {
         console.error("No se pudo recuperar el carrito guardado.", error);
         return new Map();
@@ -46,6 +91,11 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
     let accountBusy = false;
     let checkoutBusy = false;
     let checkoutPending = localStorage.getItem(CHECKOUT_PENDING_KEY) === "true";
+    const paymentOptions = { stripe: false, paypal: false };
+    const selectedVariants = new Map();
+    let appliedPromotion = null;
+    let activeProductId = null;
+    let productModalPreviousFocus = null;
 
     function capSvg(product, className = "product-art") {
       const { color, brim, patch, label } = product;
@@ -71,6 +121,28 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
         sneaker: `<path d="M65 149c20-5 38-20 51-51l15-38 35 13c4 31 23 48 53 60l66 25c15 6 24 16 24 29 0 16-13 25-35 25H75c-23 0-39-11-39-29 0-15 10-28 29-34z" fill="${color}" stroke="#77766f" stroke-width="3"/><path d="M36 177h270c-1 24-17 35-38 35H75c-24 0-38-11-39-35z" fill="${brim}" stroke="#77766f" stroke-width="2"/><path d="m124 96 49 15m-57-1 45 14m-53 1 43 13m-11-68 5 38" fill="none" stroke="${brim}" stroke-width="5" stroke-linecap="round"/><text x="222" y="163" text-anchor="middle" fill="${brim === "#171715" ? "#f5f4ee" : "#171715"}" font-family="Arial,sans-serif" font-size="12" font-weight="700">${label}</text>`
       };
       return `<svg class="${className}" viewBox="0 0 360 260" role="img" aria-label="${product.department}: ${product.name}">${drawings[product.type]}</svg>`;
+    }
+
+    function variantKey(productId, colorId, size) {
+      return `${productId}|${colorId}|${size}`;
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, character => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;"
+      })[character]);
+    }
+
+    function getVariant(product) {
+      const selected = selectedVariants.get(product.id);
+      return {
+        color: product.colorOptions.find(option => option.id === selected?.colorId) || product.colorOptions[0],
+        size: product.sizeOptions.includes(selected?.size) ? selected.size : product.sizeOptions[0]
+      };
     }
 
     function renderProducts() {
@@ -100,39 +172,201 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
         grid.innerHTML = `<div class="empty-state">${invalidPriceRange ? "El precio mínimo no puede ser mayor al precio máximo." : "No encontramos productos con esos criterios. Prueba con otros filtros."}</div>`;
         return;
       }
-      grid.innerHTML = visibleProducts.map(product => `
-        <article class="product-card">
+      grid.innerHTML = visibleProducts.map(product => {
+        const variant = getVariant(product);
+        return `
+        <article class="product-card" data-product-card="${product.id}">
           <div class="product-visual">
             ${product.tag ? `<span class="product-tag">${product.tag}</span>` : ""}
             <button class="favorite-button ${favorites.has(product.id) ? "is-favorite" : ""}" data-favorite="${product.id}" aria-label="${favorites.has(product.id) ? "Quitar de favoritos" : "Añadir a favoritos"}" aria-pressed="${favorites.has(product.id)}">
               <svg viewBox="0 0 24 24" fill="${favorites.has(product.id) ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.7"><path d="M20.8 8.8c0 4.1-8.8 10.1-8.8 10.1S3.2 12.9 3.2 8.8A4.3 4.3 0 0 1 12 6.7a4.3 4.3 0 0 1 8.8 2.1Z"/></svg>
             </button>
-            ${productArt(product)}
-            <button class="quick-add" data-add="${product.id}">Agregar al carrito
+            ${productArt({ ...product, color: variant.color.color, brim: variant.color.brim })}
+            <button class="quick-add" data-product-open="${product.id}">Elegir opciones
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
             </button>
           </div>
           <div class="product-info">
-            <div class="product-name-row"><h3 class="product-name">${product.name}</h3><span class="product-price">${formatPrice(product.price)}</span></div>
+            <div class="product-name-row"><button class="product-name product-name-button" data-product-open="${product.id}">${product.name}</button><span class="product-price">${formatPrice(product.price)}</span></div>
             <p class="product-description">${product.description}</p>
           </div>
-        </article>`).join("");
+        </article>`;
+      }).join("");
+    }
+
+    function renderProductModal(focusTarget = null) {
+      const product = products.find(item => item.id === activeProductId);
+      if (!product) return;
+      const variant = getVariant(product);
+      const content = document.getElementById("product-modal-content");
+      content.innerHTML = `
+        <div class="product-modal-visual">${productArt({ ...product, color: variant.color.color, brim: variant.color.brim })}</div>
+        <div class="product-modal-details">
+          <p class="product-modal-kicker">${escapeHtml(product.department)}${product.category ? ` / ${escapeHtml(product.category)}` : ""}</p>
+          <h2 id="product-modal-name">${escapeHtml(product.name)}</h2>
+          <p class="product-modal-description">${escapeHtml(product.description)}</p>
+          <p class="product-modal-price">${formatPrice(product.price)} <span>MXN</span></p>
+          <fieldset class="variant-choice">
+            <legend>Color <span>${escapeHtml(variant.color.label)}</span></legend>
+            <div class="variant-swatches">
+              ${product.colorOptions.map(color => `
+                <button class="variant-swatch ${variant.color.id === color.id ? "selected" : ""}" type="button"
+                  data-modal-color="${escapeHtml(color.id)}" aria-label="${escapeHtml(color.label)}"
+                  aria-pressed="${variant.color.id === color.id}" title="${escapeHtml(color.label)}"
+                  style="--swatch-color:${escapeHtml(color.color)};--swatch-border:${escapeHtml(color.brim)}">
+                  <span></span>
+                </button>`).join("")}
+            </div>
+          </fieldset>
+          <fieldset class="variant-choice">
+            <legend>Talla <span>${escapeHtml(variant.size)}</span></legend>
+            <div class="variant-sizes">
+              ${product.sizeOptions.map(size => `
+                <button class="variant-size ${variant.size === size ? "selected" : ""}" type="button"
+                  data-modal-size="${escapeHtml(size)}" aria-pressed="${variant.size === size}">${escapeHtml(size)}</button>`).join("")}
+            </div>
+          </fieldset>
+          <button class="button product-modal-add" id="product-modal-add" type="button">Agregar al carrito</button>
+          <p class="product-modal-note">Elige el color y la talla que prefieras.</p>
+        </div>`;
+      if (focusTarget) {
+        const [type, value] = focusTarget;
+        const selector = type === "color" ? "[data-modal-color]" : "[data-modal-size]";
+        const attribute = type === "color" ? "modalColor" : "modalSize";
+        [...content.querySelectorAll(selector)].find(button => button.dataset[attribute] === value)?.focus();
+      }
+    }
+
+    function openProductModal(productId, trigger) {
+      if (!products.some(product => product.id === productId)) return;
+      activeProductId = productId;
+      productModalPreviousFocus = trigger;
+      renderProductModal();
+      const modal = document.getElementById("product-modal-overlay");
+      modal.classList.add("open");
+      modal.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+      document.getElementById("product-modal-close").focus();
+    }
+
+    function closeProductModal() {
+      const modal = document.getElementById("product-modal-overlay");
+      if (!modal.classList.contains("open")) return;
+      modal.classList.remove("open");
+      modal.setAttribute("aria-hidden", "true");
+      document.body.style.overflow = "";
+      activeProductId = null;
+      if (productModalPreviousFocus?.isConnected) productModalPreviousFocus.focus();
     }
 
     function formatPrice(price) {
       return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 }).format(price);
     }
 
+    function formatCartPrice(price) {
+      return new Intl.NumberFormat("es-MX", {
+        style: "currency",
+        currency: "MXN",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(price);
+    }
+
     function addToCart(id) {
-      cart.set(id, (cart.get(id) || 0) + 1);
-      renderCart();
       const product = products.find(item => item.id === id);
+      const variant = getVariant(product);
+      const key = variantKey(id, variant.color.id, variant.size);
+      cart.set(key, (cart.get(key) || 0) + 1);
+      appliedPromotion = null;
+      updatePromotionMessage("", "");
+      renderCart();
       showToast(`${product.name} agregada a tu carrito`);
     }
 
+    function parseCartKey(key) {
+      const [productId, colorId, ...sizeParts] = String(key).split("|");
+      const product = products.find(item => item.id === Number(productId));
+      if (!product) return null;
+      const color = product.colorOptions.find(option => option.id === colorId);
+      const size = sizeParts.join("|");
+      if (!color || !product.sizeOptions.includes(size)) return null;
+      return { product, color, size };
+    }
+
+    function getCartItems() {
+      return [...cart.entries()].map(([key, quantity]) => {
+        const variant = parseCartKey(key);
+        if (!variant) return null;
+        return {
+          id: variant.product.id,
+          quantity,
+          color: variant.color.id,
+          size: variant.size
+        };
+      }).filter(Boolean);
+    }
+
+    function cartSubtotal() {
+      return [...cart.entries()].reduce((sum, [key, quantity]) => {
+        const variant = parseCartKey(key);
+        return sum + (variant ? variant.product.price * quantity : 0);
+      }, 0);
+    }
+
+    function updatePromotionMessage(message, type) {
+      const status = document.getElementById("promo-message");
+      status.textContent = message;
+      status.dataset.state = type;
+      document.getElementById("promo-remove").hidden = !appliedPromotion;
+      document.getElementById("promo-code").disabled = Boolean(appliedPromotion);
+      document.getElementById("promo-apply").disabled = Boolean(appliedPromotion) || checkoutBusy;
+    }
+
+    async function validatePromotion() {
+      const input = document.getElementById("promo-code");
+      const code = input.value.trim().toUpperCase();
+      if (!code) {
+        updatePromotionMessage("Escribe un código para canjearlo.", "error");
+        return;
+      }
+      const button = document.getElementById("promo-apply");
+      button.disabled = true;
+      try {
+        const result = await requestPaymentApi("/api/validate-promo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, items: getCartItems() })
+        }, "No pudimos validar el código promocional.");
+        appliedPromotion = { code: result.code, percentOff: result.percentOff };
+        updatePromotionMessage(`${result.code} aplicado: ${result.percentOff}% de descuento.`, "success");
+        renderCart();
+      } catch (error) {
+        appliedPromotion = null;
+        updatePromotionMessage(error.message || "Código inválido.", "error");
+      } finally {
+        button.disabled = Boolean(appliedPromotion) || checkoutBusy;
+      }
+    }
+
+    document.getElementById("promo-form").addEventListener("submit", event => {
+      event.preventDefault();
+      validatePromotion();
+    });
+    document.getElementById("promo-remove").addEventListener("click", () => {
+      appliedPromotion = null;
+      document.getElementById("promo-code").value = "";
+      updatePromotionMessage("Código eliminado.", "");
+      renderCart();
+    });
+
+
     function renderCart() {
       const count = [...cart.values()].reduce((sum, quantity) => sum + quantity, 0);
-      const total = [...cart.entries()].reduce((sum, [id, quantity]) => sum + products.find(item => item.id === id).price * quantity, 0);
+      const subtotal = cartSubtotal();
+      const discount = appliedPromotion
+        ? Math.round(subtotal * 100 * appliedPromotion.percentOff / 100) / 100
+        : 0;
+      const total = subtotal - discount;
       try {
         localStorage.setItem("capstreet-cart", JSON.stringify([...cart.entries()]));
       } catch (error) {
@@ -140,27 +374,40 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
       }
       document.getElementById("cart-count").textContent = count;
       document.getElementById("drawer-count").textContent = `(${count})`;
-      document.getElementById("cart-total").textContent = `${formatPrice(total)} MXN`;
-      document.getElementById("checkout-button").disabled = count === 0;
+      document.getElementById("cart-subtotal").textContent = formatCartPrice(subtotal);
+      document.getElementById("cart-discount").textContent = `−${formatCartPrice(discount)}`;
+      document.getElementById("cart-discount-row").hidden = discount === 0;
+      document.getElementById("cart-total").textContent = formatCartPrice(total);
+      document.getElementById("buy-button").disabled = count === 0 || checkoutBusy;
+      document.getElementById("stripe-checkout-button").disabled = count === 0 || !paymentOptions.stripe || checkoutBusy;
+      document.getElementById("paypal-checkout-button").disabled = count === 0 || !paymentOptions.paypal || checkoutBusy;
+      if (count === 0) {
+        document.getElementById("checkout-payment-step").hidden = true;
+        document.getElementById("buy-button").hidden = false;
+      }
       const items = document.getElementById("cart-items");
       if (count === 0) {
         items.innerHTML = '<div class="cart-empty">Tu carrito está esperando algo bueno.<br>Encuentra tu próxima gorra favorita.</div>';
         return;
       }
-      items.innerHTML = [...cart.entries()].map(([id, quantity]) => {
-        const product = products.find(item => item.id === id);
+      items.innerHTML = [...cart.entries()].map(([key, quantity]) => {
+        const variant = parseCartKey(key);
+        if (!variant) return "";
+        const { product, color, size } = variant;
+        const id = product.id;
         return `<div class="cart-item">
-          <div class="cart-item-art">${productArt(product, "")}</div>
+          <div class="cart-item-art">${productArt({ ...product, color: color.color, brim: color.brim }, "")}</div>
           <div>
             <p class="cart-item-name">${product.name}</p>
+            <span class="cart-item-variant">${color.label} · ${size}</span>
             <span class="cart-item-price">${formatPrice(product.price)}</span>
             <div class="quantity-control">
-              <button data-quantity="${id}" data-change="-1" aria-label="Quitar una ${product.name}">−</button>
+              <button data-quantity="${escapeHtml(key)}" data-change="-1" aria-label="Quitar una ${product.name}">−</button>
               <span>${quantity}</span>
-              <button data-quantity="${id}" data-change="1" aria-label="Añadir una ${product.name}">+</button>
+              <button data-quantity="${escapeHtml(key)}" data-change="1" aria-label="Añadir una ${product.name}">+</button>
             </div>
           </div>
-          <button class="remove-button" data-remove="${id}">Quitar</button>
+          <button class="remove-button" data-remove="${escapeHtml(key)}">Quitar</button>
         </div>`;
       }).join("");
     }
@@ -181,14 +428,43 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
     }
 
     document.getElementById("products-grid").addEventListener("click", event => {
-      const addButton = event.target.closest("[data-add]");
-      if (addButton) addToCart(Number(addButton.dataset.add));
+      const productButton = event.target.closest("[data-product-open]");
+      if (productButton) openProductModal(Number(productButton.dataset.productOpen), productButton);
       const favoriteButton = event.target.closest("[data-favorite]");
       if (favoriteButton) {
         const id = Number(favoriteButton.dataset.favorite);
         favorites.has(id) ? favorites.delete(id) : favorites.add(id);
         renderProducts();
       }
+    });
+
+    document.getElementById("product-modal-content").addEventListener("click", event => {
+      const colorButton = event.target.closest("[data-modal-color]");
+      const sizeButton = event.target.closest("[data-modal-size]");
+      if (colorButton) {
+        const product = products.find(item => item.id === activeProductId);
+        const current = getVariant(product);
+        selectedVariants.set(product.id, { colorId: colorButton.dataset.modalColor, size: current.size });
+        const card = document.querySelector(`[data-product-card="${product.id}"] .product-visual`);
+        if (card) card.querySelector(".product-art").outerHTML = productArt({
+          ...product,
+          color: getVariant(product).color.color,
+          brim: getVariant(product).color.brim
+        });
+        renderProductModal(["color", colorButton.dataset.modalColor]);
+      } else if (sizeButton) {
+        const product = products.find(item => item.id === activeProductId);
+        const current = getVariant(product);
+        selectedVariants.set(product.id, { colorId: current.color.id, size: sizeButton.dataset.modalSize });
+        renderProductModal(["size", sizeButton.dataset.modalSize]);
+      } else if (event.target.closest("#product-modal-add")) {
+        addToCart(activeProductId);
+        closeProductModal();
+      }
+    });
+    document.getElementById("product-modal-close").addEventListener("click", closeProductModal);
+    document.getElementById("product-modal-overlay").addEventListener("click", event => {
+      if (event.target === event.currentTarget) closeProductModal();
     });
 
     document.querySelector(".filters").addEventListener("click", event => {
@@ -301,10 +577,15 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
       }
     }
 
-    function setCheckoutPending(pending) {
+    function setCheckoutPending(pending, provider = null) {
       checkoutPending = pending;
-      if (pending) localStorage.setItem(CHECKOUT_PENDING_KEY, "true");
-      else localStorage.removeItem(CHECKOUT_PENDING_KEY);
+      if (pending) {
+        localStorage.setItem(CHECKOUT_PENDING_KEY, "true");
+        if (provider) localStorage.setItem(CHECKOUT_PROVIDER_PENDING_KEY, provider);
+      } else {
+        localStorage.removeItem(CHECKOUT_PENDING_KEY);
+        localStorage.removeItem(CHECKOUT_PROVIDER_PENDING_KEY);
+      }
     }
 
     function renderOrderMessage(container, message, className) {
@@ -323,7 +604,7 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
 
       const { data, error } = await supabaseClient
         .from("orders")
-        .select("id,amount,currency,status,created_at")
+        .select("id,amount,currency,status,payment_provider,created_at")
         .order("created_at", { ascending: false })
         .limit(10);
       if (error) {
@@ -349,7 +630,8 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
         row.className = "order-entry";
         const label = document.createElement("span");
         const date = new Date(order.created_at).toLocaleDateString("es-MX");
-        label.textContent = `Pedido ${order.id.slice(0, 8).toUpperCase()} · ${date} · ${statuses[order.status] || "En proceso"}`;
+        const provider = order.payment_provider === "paypal" ? "PayPal" : "Stripe";
+        label.textContent = `Pedido ${order.id.slice(0, 8).toUpperCase()} · ${date} · ${provider} · ${statuses[order.status] || "En proceso"}`;
         const amount = document.createElement("span");
         amount.textContent = new Intl.NumberFormat("es-MX", {
           style: "currency",
@@ -596,7 +878,8 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
     }
     document.addEventListener("keydown", event => {
       if (event.key === "Escape") {
-        if (document.getElementById("account-overlay").classList.contains("open")) setAccountOpen(false);
+        if (document.getElementById("product-modal-overlay").classList.contains("open")) closeProductModal();
+        else if (document.getElementById("account-overlay").classList.contains("open")) setAccountOpen(false);
         else setCartOpen(false);
       }
     });
@@ -605,50 +888,60 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
       const quantityButton = event.target.closest("[data-quantity]");
       const removeButton = event.target.closest("[data-remove]");
       if (removeButton) {
-        cart.delete(Number(removeButton.dataset.remove));
+        cart.delete(removeButton.dataset.remove);
+        appliedPromotion = null;
+        document.getElementById("promo-code").value = "";
+        updatePromotionMessage("", "");
         renderCart();
       } else if (quantityButton) {
-        const id = Number(quantityButton.dataset.quantity);
-        const nextQuantity = (cart.get(id) || 0) + Number(quantityButton.dataset.change);
-        if (nextQuantity > 0) cart.set(id, nextQuantity);
-        else cart.delete(id);
+        const key = quantityButton.dataset.quantity;
+        const nextQuantity = (cart.get(key) || 0) + Number(quantityButton.dataset.change);
+        if (nextQuantity > 0) cart.set(key, nextQuantity);
+        else cart.delete(key);
+        appliedPromotion = null;
+        document.getElementById("promo-code").value = "";
+        updatePromotionMessage("", "");
         renderCart();
       }
     });
 
     async function continueCheckoutAfterAccount() {
       if (!checkoutPending) return;
-      await startCheckout();
+      await startCheckout(localStorage.getItem(CHECKOUT_PROVIDER_PENDING_KEY) || "stripe");
     }
 
-    async function startCheckout() {
+    async function startCheckout(provider) {
       if (!cart.size) return;
       if (checkoutBusy) return;
+      if (!paymentOptions[provider]) {
+        showToast("Este método de pago no está disponible en este momento.");
+        return;
+      }
       if (!supabaseClient) {
-        setCheckoutPending(true);
+        setCheckoutPending(true, provider);
         setAccountMode("register");
         setAccountOpen(true);
         showAccountMessage("No pudimos conectar con el servicio de cuentas. Comprueba tu conexión e inténtalo de nuevo.");
         return;
       }
 
-      const button = document.getElementById("checkout-button");
+      const button = document.getElementById(`${provider}-checkout-button`);
       const originalLabel = button.innerHTML;
       checkoutBusy = true;
-      button.disabled = true;
-      button.textContent = "Conectando con Stripe...";
+      renderCart();
+      button.textContent = provider === "paypal" ? "Conectando con PayPal..." : "Conectando con Stripe...";
       try {
         const { data, error } = await supabaseClient.auth.getSession();
         if (error) throw error;
         if (!data.session) {
-          setCheckoutPending(true);
+          setCheckoutPending(true, provider);
           setAccountMode("register");
           setAccountOpen(true);
           showAccountMessage("Crea tu cuenta o inicia sesión para continuar con tu compra. Tu carrito se conservará.");
           return;
         }
         if (!data.session.user.email_confirmed_at && !data.session.user.confirmed_at) {
-          setCheckoutPending(true);
+          setCheckoutPending(true, provider);
           setAccountMode("login");
           setAccountOpen(true);
           showAccountMessage("Confirma tu correo para continuar con la compra.");
@@ -656,46 +949,101 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
         }
 
         setCheckoutPending(false);
-        const response = await fetch(`${CHECKOUT_API_URL}/api/create-checkout-session`, {
+        const endpoint = provider === "paypal" ? "/api/paypal/create-order" : "/api/create-checkout-session";
+        const result = await requestPaymentApi(endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${data.session.access_token}`
           },
-          body: JSON.stringify({ items: [...cart.entries()].map(([id, quantity]) => ({ id, quantity })) })
-        });
-        const result = await response.json();
-        if (!response.ok) {
-          if (response.status === 401) {
-            setCheckoutPending(true);
-            setAccountMode("login");
-            setAccountOpen(true);
-          }
-          throw new Error(result.error || "No pudimos iniciar el pago.");
-        }
+          body: JSON.stringify({
+            items: getCartItems(),
+            promoCode: appliedPromotion?.code || null
+          })
+        }, "No pudimos iniciar el pago.");
         if (typeof result.checkoutUrl !== "string") {
           throw new Error("La pasarela no devolvió un enlace de pago válido.");
         }
         const checkoutUrl = new URL(result.checkoutUrl);
-        if (checkoutUrl.protocol !== "https:" || !checkoutUrl.hostname.endsWith(".stripe.com")) {
+        const allowedCheckoutHost = provider === "paypal"
+          ? checkoutUrl.hostname === "paypal.com" || checkoutUrl.hostname.endsWith(".paypal.com")
+          : checkoutUrl.hostname === "checkout.stripe.com";
+        if (checkoutUrl.protocol !== "https:" || !allowedCheckoutHost) {
           throw new Error("La pasarela devolvió una dirección de pago no válida.");
         }
         window.location.assign(checkoutUrl.href);
       } catch (error) {
-        const message = error instanceof TypeError
-          ? "No se pudo conectar con el servicio de pago. Verifica que la API de Render esté activa."
-          : error.message;
-        showToast(message);
+        if (error.status === 401) {
+          setCheckoutPending(true, provider);
+          setAccountMode("login");
+          setAccountOpen(true);
+        }
+        showToast(error.message || "No pudimos iniciar el pago.");
         console.error("No se pudo completar el inicio de checkout.", error);
       } finally {
         checkoutBusy = false;
-        button.disabled = cart.size === 0;
         button.innerHTML = originalLabel;
+        renderCart();
       }
     }
 
     async function handleCheckoutReturn() {
       const url = new URL(window.location.href);
+      const paypalState = url.searchParams.get("paypal");
+      if (paypalState === "cancel") {
+        showToast("Pago PayPal cancelado. Tu carrito sigue guardado.");
+        url.searchParams.delete("paypal");
+        url.searchParams.delete("token");
+        window.history.replaceState({}, "", url);
+        return;
+      }
+      if (paypalState === "success") {
+        const paypalOrderId = url.searchParams.get("token");
+        if (!paypalOrderId || !supabaseClient) {
+          showToast("No pudimos identificar tu pago de PayPal. Contacta a CAPSTREET antes de volver a pagar.");
+          return;
+        }
+        try {
+          const { data, error } = await supabaseClient.auth.getSession();
+          if (error) throw error;
+          if (!data.session) {
+            setAccountMode("login");
+            setAccountOpen(true);
+            showAccountMessage("Inicia sesión con la cuenta usada para comprar para confirmar tu pago de PayPal.");
+            return;
+          }
+          const result = await requestPaymentApi(
+            `/api/paypal/orders/${encodeURIComponent(paypalOrderId)}/capture`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${data.session.access_token}`
+              },
+              body: JSON.stringify({})
+            },
+            "No pudimos confirmar el pago de PayPal."
+          );
+          if (result.status === "COMPLETED" && result.order.status === "paid") {
+            cart.clear();
+            renderCart();
+            showToast("¡Compra confirmada! Consulta el pedido en Mi cuenta.");
+            await loadAccountOrders();
+          } else {
+            showToast("PayPal aún no confirma el pago. Conservamos tu carrito.");
+            return;
+          }
+          url.searchParams.delete("paypal");
+          url.searchParams.delete("token");
+          url.searchParams.delete("PayerID");
+          window.history.replaceState({}, "", url);
+        } catch (error) {
+          showToast(error.message || "No pudimos confirmar el pago de PayPal.");
+          console.error("No se pudo completar o verificar el pago PayPal.", error);
+        }
+        return;
+      }
+
       const checkoutState = url.searchParams.get("checkout");
       if (checkoutState === "cancel") {
         showToast("Pago cancelado. Tu carrito sigue guardado.");
@@ -720,11 +1068,9 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
           showAccountMessage("Inicia sesión con la cuenta usada para pagar y verificaremos el pedido.");
           return;
         }
-        const response = await fetch(`${CHECKOUT_API_URL}/api/checkout-session/${encodeURIComponent(sessionId)}`, {
+        const result = await requestPaymentApi(`/api/checkout-session/${encodeURIComponent(sessionId)}`, {
           headers: { Authorization: `Bearer ${data.session.access_token}` }
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "No pudimos verificar el pago.");
+        }, "No pudimos verificar el pago.");
         if (result.paymentStatus === "paid" && result.order.status === "paid") {
           cart.clear();
           renderCart();
@@ -742,7 +1088,45 @@ const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
       }
     }
 
-    document.getElementById("checkout-button").addEventListener("click", startCheckout);
+    document.getElementById("stripe-checkout-button").addEventListener("click", () => startCheckout("stripe"));
+    document.getElementById("paypal-checkout-button").addEventListener("click", () => startCheckout("paypal"));
+    document.getElementById("buy-button").addEventListener("click", () => {
+      if (!cart.size) return;
+      document.getElementById("buy-button").hidden = true;
+      const paymentStep = document.getElementById("checkout-payment-step");
+      paymentStep.hidden = false;
+      document.getElementById("payment-note").focus();
+    });
+    document.getElementById("payment-back-button").addEventListener("click", () => {
+      document.getElementById("checkout-payment-step").hidden = true;
+      document.getElementById("buy-button").hidden = false;
+      document.getElementById("buy-button").focus();
+    });
+
+    async function loadPaymentOptions() {
+      const note = document.getElementById("payment-note");
+      try {
+        const options = await requestPaymentApi("/api/payment-options", { method: "GET" }, "No pudimos consultar los métodos de pago.");
+        paymentOptions.stripe = options.stripe === true;
+        paymentOptions.paypal = options.paypal === true;
+        if (paymentOptions.stripe && paymentOptions.paypal) {
+          note.textContent = "Elige Stripe o PayPal. En Stripe pueden aparecer tarjeta, SPEI u OXXO según la disponibilidad de tu cuenta.";
+        } else if (paymentOptions.stripe) {
+          note.textContent = "Stripe está disponible. Los métodos habilitados dependen de la configuración de tu cuenta.";
+        } else if (paymentOptions.paypal) {
+          note.textContent = "PayPal está disponible para esta compra.";
+        } else {
+          note.textContent = "Los pagos aún no están configurados. Intenta de nuevo más tarde.";
+        }
+      } catch (error) {
+        paymentOptions.stripe = false;
+        paymentOptions.paypal = false;
+        note.textContent = "No fue posible consultar los pagos. Intenta de nuevo más tarde.";
+        console.error("No se pudieron consultar los métodos de pago.", error);
+      }
+      renderCart();
+    }
 
     renderProducts();
     renderCart();
+    loadPaymentOptions();

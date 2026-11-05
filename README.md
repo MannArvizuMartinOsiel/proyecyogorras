@@ -1,29 +1,48 @@
 # CAPSTREET
 
-Tienda estática en español, preparada para publicarse en Render, con un servicio Node separado para autenticación de compra, Stripe Checkout y seguimiento de pedidos.
+Tienda estática en español con API de pagos separada para Render. El servidor calcula los importes desde `js/products.js`; nunca confía en precios enviados por el navegador.
 
-## Publicar en Render
+## Pagos disponibles
 
-El archivo `render.yaml` declara dos servicios:
+- En el carrito, el cliente toca **Comprar** para abrir la selección de métodos de pago.
+- **Stripe Checkout:** tarjetas (Visa, Mastercard y American Express según la cuenta), Apple Pay y Google Pay cuando Stripe y el dispositivo los habilitan. SPEI usa `mx_bank_transfer`. OXXO se ofrece solo si está habilitado para la cuenta Stripe; su pago puede tardar en confirmarse.
+- **PayPal Checkout:** crea y captura órdenes en el servidor usando PayPal Orders v2. La captura se valida contra el pedido y el importe almacenado.
+- En el carrito se pueden elegir color y talla, y canjear `CAP10` (10 %) o `STREET15` (15 %). La API valida el código y vuelve a calcular el descuento antes de crear un pago; los importes de Stripe y PayPal se basan en el catálogo del servidor.
 
-- **capstreet-store**: Static Site, rama `main`, Root Directory vacío, Build Command vacío y Publish Directory `.`.
-- **capstreet-api**: servicio Node que procesa sesiones de pago y webhooks.
+Stripe aloja la captura de datos de tarjeta; PayPal redirige a su propio sitio. CAPSTREET no recibe ni almacena números de tarjeta ni códigos de seguridad. Las claves de prueba y de producción deben mantenerse separadas.
 
-Conecta el repositorio a Render y configura las variables marcadas como `sync: false` en el panel del servicio `capstreet-api`. No pongas claves secretas en `js/config.js` ni en el sitio estático.
+## Variables de entorno de Render
 
-## Configuración antes de aceptar compras
+Configúralas en el servicio Web `capstreet-api`:
 
-1. Supabase ya está configurado en `js/config.js` con la URL del proyecto y la clave publishable proporcionadas. La clave es pública por diseño; nunca uses aquí la clave `service_role`.
-2. Ejecuta `supabase-schema.sql` en el SQL Editor del proyecto Supabase para crear las tablas y políticas de perfiles y pedidos.
-3. En Supabase, permite como URL de redirección la URL de Render de la tienda y cualquier dominio local que uses para pruebas.
-4. `SUPABASE_URL` y `SUPABASE_ANON_KEY` ya están definidos en `render.yaml`. En Render, configura `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` como secretos del servicio `capstreet-api`. No compartas ni incluyas la clave `service_role` en el frontend.
-5. En `js/config.js`, ajusta `checkoutApiUrl` si el dominio de la API cambia.
-6. En Stripe, crea un webhook apuntando a `https://TU-API.onrender.com/api/stripe-webhook` y habilita `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` y `checkout.session.expired`. Copia su secreto de firma a `STRIPE_WEBHOOK_SECRET`.
-7. Completa los campos entre corchetes de `privacy.html`, confirma el correo de contacto e identifica a la empresa de mensajería antes de publicar y operar la tienda.
+| Variable | Requerida | Descripción |
+|---|---|---|
+| `SITE_ORIGIN` | Sí | Origen público exacto del Static Site, por ejemplo `https://capstreet-store.onrender.com`. |
+| `SUPABASE_URL` | Sí | Ya está configurada en `render.yaml`. |
+| `SUPABASE_ANON_KEY` | Sí | Clave pública de Supabase; ya está configurada. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Sí | Secreto de Supabase para guardar y actualizar pedidos. Nunca lo pongas en el frontend. |
+| `STRIPE_SECRET_KEY` | Para Stripe | Clave secreta `sk_test_...` durante pruebas o `sk_live_...` en producción. |
+| `STRIPE_PUBLISHABLE_KEY` | Recomendada | Clave pública `pk_test_...` o `pk_live_...`; el redirect a Checkout alojado no la necesita. |
+| `STRIPE_WEBHOOK_SECRET` | Para Stripe | Secreto `whsec_...` del endpoint `/api/stripe-webhook`. |
+| `PAYPAL_CLIENT_ID` | Para PayPal | Client ID de la app PayPal. |
+| `PAYPAL_CLIENT_SECRET` | Para PayPal | Secreto de la app PayPal; mantenerlo solo en Render. |
+| `PAYPAL_MODE` | Sí | `sandbox` para pruebas o `live` para cobros reales. El blueprint usa `sandbox`. |
+| `PAYPAL_WEBHOOK_ID` | Recomendada | ID del webhook PayPal que apunta a `/api/paypal-webhook`; se usa para verificar su firma. |
 
-Prueba primero con claves de prueba de Stripe. Los números de tarjeta se introducen únicamente en la página alojada de Stripe: CAPSTREET no recibe ni guarda números de tarjeta o códigos de seguridad.
+Si un proveedor no tiene las variables necesarias, la API sigue funcionando, informa el método como no disponible y el checkout muestra un mensaje en vez de romper la tienda.
 
-## Desarrollo y comprobaciones
+## Despliegue
+
+1. En Supabase, ejecuta `supabase-schema.sql` en SQL Editor. Incluye columnas idempotentes para guardar pedidos Stripe, PayPal y descuentos promocionales.
+2. En Supabase Auth, agrega la URL pública del Static Site a las URLs permitidas para confirmación de correo.
+3. Conecta el repositorio a Render usando `render.yaml`. El Static Site usa rama `main`, Build Command vacío y Publish Directory `.`. El servicio Node usa `npm ci`, `npm start` y health check `/health`.
+4. Completa los secretos requeridos del servicio `capstreet-api` en el panel de Render. Mantén `PAYPAL_MODE=sandbox` y claves Stripe `test` al validar.
+5. En Stripe Dashboard, habilita tarjetas, Bank Transfers y OXXO (si la cuenta es elegible). Añade un webhook a `https://TU-API.onrender.com/api/stripe-webhook` con `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` y `checkout.session.expired`.
+6. En PayPal Developer Dashboard, crea una app sandbox y un webhook a `https://TU-API.onrender.com/api/paypal-webhook` con el evento `PAYMENT.CAPTURE.COMPLETED`. Pon el `PAYPAL_WEBHOOK_ID` en Render.
+7. Si Render asigna dominios distintos a los ejemplos, actualiza `SITE_ORIGIN` en Render y `checkoutApiUrl` en `js/config.js`.
+8. Antes de activar modo live, completa los campos legales pendientes de `privacy.html`, confirma el correo de contacto, completa la información comercial solicitada por los proveedores y realiza una compra de prueba de cada método habilitado.
+
+## Desarrollo
 
 Requiere Node.js 20 o posterior:
 
@@ -33,6 +52,6 @@ npm test
 npm start
 ```
 
-La API local usa `PORT=3001`. Copia `.env.example` a `.env` y completa valores de prueba fuera del repositorio para ejecutarla localmente. La tienda abierta desde `http://localhost:5500` se conecta a esa API local.
+La API local usa `PORT=3001`; copia `.env.example` a `.env` y agrega credenciales de prueba. Sirve la tienda desde `http://localhost:5500` para evitar restricciones del protocolo `file:`.
 
-El servicio crea pedidos con precios obtenidos del catálogo del servidor. Por ahora no integra una paquetería ni cobra una tarifa de envío; define y configura esa operación antes de ofrecer entregas.
+No hay integración con una paquetería ni cálculo de envío. Configura esos procesos antes de ofrecer entregas.

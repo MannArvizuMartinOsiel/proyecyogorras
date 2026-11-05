@@ -45,7 +45,13 @@ grant select, insert, update on public.user_profiles to authenticated;
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
-  stripe_checkout_session_id text not null unique,
+  stripe_checkout_session_id text unique,
+  paypal_order_id text unique,
+  payment_provider text not null default 'stripe'
+    check (payment_provider in ('stripe', 'paypal')),
+  subtotal integer not null default 0 check (subtotal >= 0),
+  discount_amount integer not null default 0 check (discount_amount >= 0),
+  promo_code text,
   amount integer not null check (amount >= 0),
   currency text not null default 'mxn',
   status text not null default 'pending'
@@ -56,6 +62,23 @@ create table if not exists public.orders (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.orders
+  alter column stripe_checkout_session_id drop not null,
+  add column if not exists paypal_order_id text,
+  add column if not exists payment_provider text not null default 'stripe',
+  add column if not exists subtotal integer not null default 0,
+  add column if not exists discount_amount integer not null default 0,
+  add column if not exists promo_code text;
+
+alter table public.orders
+  drop constraint if exists orders_payment_provider_check,
+  add constraint orders_payment_provider_check
+    check (payment_provider in ('stripe', 'paypal'));
+
+create unique index if not exists orders_paypal_order_id_key
+  on public.orders (paypal_order_id)
+  where paypal_order_id is not null;
 
 alter table public.orders enable row level security;
 

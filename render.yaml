@@ -14,6 +14,7 @@ services:
     rootDir: .
     buildCommand: npm ci
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - key: SITE_ORIGIN
         value: https://capstreet-store.onrender.com
@@ -23,7 +24,17 @@ services:
         value: sb_publishable_5JKhH6JITsProzdf2X_Zzw_9kbR1mnu
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_MODE
+        value: sandbox
+      - key: PAYPAL_WEBHOOK_ID
         sync: false

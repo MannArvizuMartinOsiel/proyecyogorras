@@ -128,6 +128,14 @@
   </footer>
 
   <div class="overlay" id="overlay"></div>
+  <div class="product-modal-overlay" id="product-modal-overlay" aria-hidden="true">
+    <section class="product-modal" role="dialog" aria-modal="true" aria-labelledby="product-modal-name">
+      <button class="icon-button product-modal-close" id="product-modal-close" type="button" aria-label="Cerrar producto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+      <div class="product-modal-content" id="product-modal-content"></div>
+    </section>
+  </div>
   <aside class="cart-drawer" id="cart-drawer" aria-label="Carrito de compras" aria-hidden="true">
     <div class="drawer-heading">
       <h2>Tu carrito <span id="drawer-count">(0)</span></h2>
@@ -137,11 +145,44 @@
     </div>
     <div class="cart-items" id="cart-items"></div>
     <div class="cart-footer">
+      <div class="cart-summary-row"><span>Subtotal</span><span id="cart-subtotal">$0 MXN</span></div>
+      <div class="cart-summary-row cart-discount-row" id="cart-discount-row" hidden><span>Descuento</span><span id="cart-discount">−$0 MXN</span></div>
       <div class="cart-total"><span>Total</span><span id="cart-total">$0 MXN</span></div>
-      <p class="payment-note">Para continuar necesitas una cuenta. El pago debe completarse en una pasarela segura; CAPSTREET no guarda los datos de tu tarjeta.</p>
-      <button class="button checkout-button" id="checkout-button" disabled>Continuar compra
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12h15m-6-6 6 6-6 6"/></svg>
+      <button class="button buy-button" id="buy-button" type="button" disabled>
+        Comprar
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg>
       </button>
+      <section class="checkout-payment-step" id="checkout-payment-step" aria-labelledby="payment-step-title" hidden>
+        <div class="payment-step-heading">
+          <div>
+            <p class="eyebrow">Paso 2 / Pago</p>
+            <h3 id="payment-step-title">Elige cómo pagar</h3>
+          </div>
+          <button class="payment-back-button" id="payment-back-button" type="button">Volver</button>
+        </div>
+        <p class="payment-note" id="payment-note" tabindex="-1" aria-live="polite">Consultando formas de pago...</p>
+        <form class="promo-form" id="promo-form">
+          <label for="promo-code">¿Tienes un código promocional?</label>
+          <div class="promo-input-row">
+            <input id="promo-code" name="promoCode" type="text" maxlength="24" autocomplete="off" placeholder="Escribe tu código">
+            <button id="promo-apply" type="submit">Canjear</button>
+            <button class="promo-remove" id="promo-remove" type="button" hidden>Quitar</button>
+          </div>
+          <p class="promo-message" id="promo-message" aria-live="polite"></p>
+          <small class="promo-hint">Prueba CAP10 o STREET15.</small>
+        </form>
+        <div class="checkout-methods" aria-label="Métodos de pago">
+          <button class="button checkout-button" id="stripe-checkout-button" type="button" disabled>
+            <span class="payment-button-copy"><strong>Tarjeta, SPEI u OXXO</strong><small>Pago seguro con Stripe</small></span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg>
+          </button>
+          <button class="paypal-checkout-button" id="paypal-checkout-button" type="button" disabled>
+            <span class="payment-button-copy"><strong>Pagar con PayPal</strong><small>Serás dirigido a PayPal</small></span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19 7 5h7a4 4 0 0 1 0 8H8m-1 0-1 6m5 0 2-8h5a3 3 0 0 1 0 6h-6"/></svg>
+          </button>
+        </div>
+        <p class="payment-note payment-security-note">Visa, Mastercard y American Express dependen de la cuenta del proveedor. Apple Pay y Google Pay pueden aparecer en dispositivos compatibles. CAPSTREET no almacena datos de tarjeta.</p>
+      </section>
     </div>
   </aside>
   <div class="toast" id="toast" role="status">

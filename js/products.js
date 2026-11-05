@@ -1,3 +1,24 @@
+const CAP_OPTIONS = [
+  { id: "black", label: "Negro", color: "#171715", brim: "#292925" },
+  { id: "white", label: "Blanco", color: "#f5f4ee", brim: "#d7d6cf" },
+  { id: "gray", label: "Gris", color: "#a9a8a1", brim: "#85847d" }
+];
+const APPAREL_OPTIONS = [
+  { id: "black", label: "Negro", color: "#171715", brim: "#d7f45b" },
+  { id: "white", label: "Blanco", color: "#f5f4ee", brim: "#171715" },
+  { id: "gray", label: "Gris", color: "#a9a8a1", brim: "#171715" }
+];
+const JEWELRY_OPTIONS = [
+  { id: "silver", label: "Plateado", color: "#c5c3ba", brim: "#8d8a80" },
+  { id: "gold", label: "Dorado", color: "#c6a45a", brim: "#80672f" },
+  { id: "black", label: "Negro", color: "#30302d", brim: "#171715" }
+];
+const SNEAKER_OPTIONS = [
+  { id: "black-white", label: "Negro / Blanco", color: "#171715", brim: "#f5f4ee" },
+  { id: "white-black", label: "Blanco / Negro", color: "#f5f4ee", brim: "#171715" },
+  { id: "gray", label: "Gris / Blanco", color: "#a9a8a1", brim: "#f5f4ee" }
+];
+
 const CAPSTREET_PRODUCTS = [
   { id: 1, department: "Gorras", category: "Clásicas", type: "cap", name: "La Clásica", description: "Negro / Ajuste clásico", price: 549, tag: "Favorita", color: "#171715", brim: "#292925", patch: "#d7f45b", label: "CAPSTREET" },
   { id: 2, department: "Gorras", category: "Clásicas", type: "cap", name: "Día Blanco", description: "Blanco hueso / Ajuste clásico", price: 549, tag: "Nuevo", color: "#f5f4ee", brim: "#d7d6cf", patch: "#171715", label: "S." },
@@ -20,6 +41,18 @@ const CAPSTREET_PRODUCTS = [
   { id: 19, department: "Tenis", type: "sneaker", name: "Court Contrast", description: "Diseño bicolor / Silueta clásica", price: 1599, tag: "", color: "#e8e7df", brim: "#171715", label: "ST" },
   { id: 20, department: "Tenis", type: "sneaker", name: "Street High", description: "Caña alta / Negro y blanco", price: 1799, tag: "", color: "#171715", brim: "#f5f4ee", label: "CS" }
 ];
+
+for (const product of CAPSTREET_PRODUCTS) {
+  product.colorOptions = product.type === "cap" ? CAP_OPTIONS
+    : product.type === "shirt" || product.type === "hoodie" ? APPAREL_OPTIONS
+      : product.type === "sneaker" ? SNEAKER_OPTIONS
+        : JEWELRY_OPTIONS;
+  product.sizeOptions = product.type === "shirt" || product.type === "hoodie"
+    ? ["XS", "S", "M", "L", "XL"]
+    : product.type === "sneaker"
+      ? ["23", "24", "25", "26", "27", "28", "29"]
+      : ["Unitalla"];
+}
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = CAPSTREET_PRODUCTS;

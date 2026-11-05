@@ -34,7 +34,7 @@
     <section>
       <h2>2. Datos que podemos tratar</h2>
       <p>Para crear una cuenta, atender pedidos y dar seguimiento a una compra podemos solicitar nombre, correo electrónico, contraseña administrada por el proveedor de autenticación, teléfono y domicilio de entrega (calle, números, colonia, código postal, ciudad y estado). También podemos tratar los productos del carrito y la información necesaria para confirmar el estado de un pedido.</p>
-      <p>La contraseña es gestionada por el servicio de autenticación y no debe almacenarse en texto legible. CAPSTREET no solicita ni almacena el número completo de tu tarjeta, código de seguridad ni PIN. Los datos de pago se capturan directamente en la página segura de Stripe Checkout.</p>
+      <p>La contraseña es gestionada por el servicio de autenticación y no debe almacenarse en texto legible. CAPSTREET no solicita ni almacena el número completo de tu tarjeta, código de seguridad ni PIN. Los pagos con tarjeta, transferencia y OXXO se procesan en Stripe Checkout; PayPal se procesa en el sitio de PayPal.</p>
     </section>
 
     <section>
@@ -49,7 +49,7 @@
 
     <section>
       <h2>4. Proveedores y transferencias</h2>
-      <p>La tienda utiliza Supabase para autenticar cuentas y almacenar perfiles y pedidos, y Stripe Checkout para procesar pagos. Stripe recibe la información necesaria para cobrar y puede recibir el correo, datos de facturación y domicilio de envío. Consulta los avisos de <a href="https://supabase.com/privacy" target="_blank" rel="noopener noreferrer">Supabase</a> y <a href="https://stripe.com/privacy" target="_blank" rel="noopener noreferrer">Stripe</a>. Los datos indispensables también podrán comunicarse a la empresa de mensajería que realice la entrega; CAPSTREET debe identificarla en este aviso antes de iniciar operaciones.</p>
+      <p>La tienda utiliza Supabase para autenticar cuentas y almacenar perfiles y pedidos. Stripe procesa pagos con tarjeta, transferencia SPEI y, si está habilitado para la cuenta, OXXO; PayPal procesa los pagos elegidos en su plataforma. Estos proveedores reciben los datos necesarios para cobrar y pueden recibir correo, datos de facturación y domicilio de envío. Consulta los avisos de <a href="https://supabase.com/privacy" target="_blank" rel="noopener noreferrer">Supabase</a>, <a href="https://stripe.com/privacy" target="_blank" rel="noopener noreferrer">Stripe</a> y <a href="https://www.paypal.com/us/legalhub/privacy-full" target="_blank" rel="noopener noreferrer">PayPal</a>. Los datos indispensables también podrán comunicarse a la empresa de mensajería que realice la entrega; CAPSTREET debe identificarla en este aviso antes de iniciar operaciones.</p>
       <p>No se deben enviar datos de tarjetas a CAPSTREET ni guardarlos en su base de datos.</p>
     </section>
 
