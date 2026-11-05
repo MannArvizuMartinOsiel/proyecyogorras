@@ -24,6 +24,8 @@ services:
         value: sb_publishable_5JKhH6JITsProzdf2X_Zzw_9kbR1mnu
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      - key: ADMIN_EMAILS
+        sync: false
       - key: STRIPE_PUBLISHABLE_KEY
         sync: false
       - key: STRIPE_SECRET_KEY

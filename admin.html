@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f5f4f0">
+  <title>Administrar catálogo — CAPSTREET</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin-page">
+  <header class="admin-header">
+    <a class="brand" href="index.html"><span class="brand-mark">C</span> CAPSTREET</a>
+    <a class="admin-back" href="index.html">Volver a la tienda</a>
+  </header>
+  <main class="admin-main">
+    <section class="admin-intro">
+      <p class="eyebrow">CAPSTREET / Administración</p>
+      <h1>Tu catálogo,<br><em>bajo control.</em></h1>
+      <p>Agrega artículos con su precio y descripción. Los cambios se reflejan en la tienda y en el checkout.</p>
+    </section>
+
+    <section class="admin-login admin-card" id="admin-login">
+      <h2>Iniciar sesión</h2>
+      <p>Usa la cuenta autorizada para administrar esta tienda.</p>
+      <form id="admin-login-form">
+        <label for="admin-email">Correo electrónico</label>
+        <input id="admin-email" name="email" type="email" autocomplete="username" required>
+        <label for="admin-password">Contraseña</label>
+        <input id="admin-password" name="password" type="password" autocomplete="current-password" required>
+        <button class="button" type="submit" id="admin-login-button">Entrar</button>
+      </form>
+      <p class="admin-message" id="admin-login-message" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="admin-dashboard" id="admin-dashboard" hidden>
+      <div class="admin-dashboard-heading">
+        <div>
+          <h2>Artículos</h2>
+          <p id="admin-session-email"></p>
+        </div>
+        <button class="admin-logout" id="admin-logout" type="button">Cerrar sesión</button>
+      </div>
+      <div class="admin-layout">
+        <form class="admin-card admin-product-form" id="admin-product-form">
+          <h3>Agregar artículo</h3>
+          <label for="product-name">Nombre</label>
+          <input id="product-name" name="name" type="text" maxlength="80" required>
+          <label for="product-department">Departamento</label>
+          <select id="product-department" name="department" required>
+            <option value="Gorras">Gorras</option>
+            <option value="Ropa">Ropa</option>
+            <option value="Joyería">Joyería</option>
+            <option value="Tenis">Tenis</option>
+          </select>
+          <label for="product-type">Tipo</label>
+          <select id="product-type" name="type" required></select>
+          <label for="product-category">Categoría <span>(opcional)</span></label>
+          <input id="product-category" name="category" type="text" maxlength="40">
+          <label for="product-price">Precio (MXN)</label>
+          <input id="product-price" name="price" type="number" min="1" max="1000000" step="1" inputmode="numeric" required>
+          <label for="product-description">Descripción</label>
+          <textarea id="product-description" name="description" rows="4" maxlength="300" required></textarea>
+          <button class="button" type="submit" id="product-save-button">Guardar artículo</button>
+          <p class="admin-message" id="admin-product-message" role="status" aria-live="polite"></p>
+        </form>
+        <section class="admin-card admin-product-list" aria-labelledby="admin-product-list-title">
+          <div class="admin-list-heading">
+            <h3 id="admin-product-list-title">Artículos agregados</h3>
+            <button type="button" class="admin-refresh" id="admin-refresh">Actualizar</button>
+          </div>
+          <div id="admin-products" aria-live="polite"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+  <script src="js/config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,204 @@
+const adminApiUrl = window.CAPSTREET_CONFIG.checkoutApiUrl.replace(/\/+$/, "");
+const adminSupabase = window.supabase.createClient(
+  window.CAPSTREET_CONFIG.supabaseUrl,
+  window.CAPSTREET_CONFIG.supabaseAnonKey,
+  {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      storageKey: "capstreet-supabase-auth"
+    }
+  }
+);
+const typeOptions = {
+  Gorras: [["cap", "Gorra"]],
+  Ropa: [["shirt", "Playera"], ["hoodie", "Sudadera"]],
+  Joyería: [["chain", "Cadena"], ["bracelet", "Pulsera"]],
+  Tenis: [["sneaker", "Tenis"]]
+};
+const loginForm = document.getElementById("admin-login-form");
+const loginMessage = document.getElementById("admin-login-message");
+const loginSection = document.getElementById("admin-login");
+const dashboard = document.getElementById("admin-dashboard");
+
+function showLoginMessage(message) {
+  loginMessage.textContent = message;
+}
+
+function setBusy(button, busy, label) {
+  button.disabled = busy;
+  if (busy) {
+    button.dataset.originalLabel = button.textContent;
+    button.textContent = label;
+  } else if (button.dataset.originalLabel) {
+    button.textContent = button.dataset.originalLabel;
+    delete button.dataset.originalLabel;
+  }
+}
+
+async function adminRequest(path, session, options = {}) {
+  const response = await fetch(`${adminApiUrl}${path}`, {
+    ...options,
+    headers: {
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      Authorization: `Bearer ${session.access_token}`,
+      ...options.headers
+    }
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "No se pudo completar la solicitud.");
+  return result;
+}
+
+function renderProducts(items) {
+  const container = document.getElementById("admin-products");
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "admin-empty";
+    empty.textContent = "Todavía no agregas artículos.";
+    container.replaceChildren(empty);
+    return;
+  }
+  const list = document.createElement("div");
+  list.className = "admin-product-rows";
+  items.forEach(product => {
+    const row = document.createElement("article");
+    row.className = "admin-product-row";
+    const heading = document.createElement("div");
+    heading.className = "admin-product-row-head";
+    const title = document.createElement("h4");
+    title.textContent = product.name;
+    const price = document.createElement("strong");
+    price.textContent = new Intl.NumberFormat("es-MX", {
+      style: "currency",
+      currency: "MXN",
+      maximumFractionDigits: 0
+    }).format(product.price);
+    heading.append(title, price);
+    const meta = document.createElement("p");
+    meta.className = "admin-product-meta";
+    meta.textContent = `${product.department}${product.category ? ` · ${product.category}` : ""}`;
+    const description = document.createElement("p");
+    description.textContent = product.description;
+    row.append(heading, meta, description);
+    list.append(row);
+  });
+  container.replaceChildren(list);
+}
+
+async function loadAdminProducts(session) {
+  const result = await adminRequest("/api/admin/products", session);
+  renderProducts(result.products);
+}
+
+async function showDashboard(session) {
+  try {
+    const result = await adminRequest("/api/admin/products", session);
+    renderProducts(result.products);
+    document.getElementById("admin-session-email").textContent = session.user.email;
+    loginSection.hidden = true;
+    dashboard.hidden = false;
+  } catch (error) {
+    dashboard.hidden = true;
+    loginSection.hidden = false;
+    showLoginMessage(error.message);
+  }
+}
+
+document.getElementById("product-department").addEventListener("change", event => {
+  const typeSelect = document.getElementById("product-type");
+  typeSelect.replaceChildren(...typeOptions[event.target.value].map(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    return option;
+  }));
+});
+document.getElementById("product-department").dispatchEvent(new Event("change"));
+
+loginForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const button = document.getElementById("admin-login-button");
+  setBusy(button, true, "Verificando...");
+  showLoginMessage("");
+  try {
+    const { data, error } = await adminSupabase.auth.signInWithPassword({
+      email: document.getElementById("admin-email").value.trim(),
+      password: document.getElementById("admin-password").value
+    });
+    if (error) throw error;
+    await showDashboard(data.session);
+    document.getElementById("admin-password").value = "";
+  } catch (error) {
+    showLoginMessage(error.message || "No pudimos iniciar sesión.");
+  } finally {
+    setBusy(button, false);
+  }
+});
+
+document.getElementById("admin-product-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const button = document.getElementById("product-save-button");
+  const message = document.getElementById("admin-product-message");
+  setBusy(button, true, "Guardando...");
+  message.textContent = "";
+  try {
+    const { data, error } = await adminSupabase.auth.getSession();
+    if (error) throw error;
+    if (!data.session) throw new Error("Tu sesión terminó. Inicia sesión de nuevo.");
+    const formData = new FormData(event.currentTarget);
+    const result = await adminRequest("/api/admin/products", data.session, {
+      method: "POST",
+      body: JSON.stringify({
+        name: formData.get("name"),
+        department: formData.get("department"),
+        type: formData.get("type"),
+        category: formData.get("category"),
+        price: Number(formData.get("price")),
+        description: formData.get("description")
+      })
+    });
+    event.currentTarget.reset();
+    document.getElementById("product-department").dispatchEvent(new Event("change"));
+    message.textContent = `${result.product.name} se agregó correctamente.`;
+    await loadAdminProducts(data.session);
+  } catch (error) {
+    message.textContent = error.message || "No pudimos guardar el artículo.";
+  } finally {
+    setBusy(button, false);
+  }
+});
+
+document.getElementById("admin-refresh").addEventListener("click", async event => {
+  const button = event.currentTarget;
+  setBusy(button, true, "Actualizando...");
+  try {
+    const { data, error } = await adminSupabase.auth.getSession();
+    if (error) throw error;
+    if (!data.session) throw new Error("Tu sesión terminó. Inicia sesión de nuevo.");
+    await loadAdminProducts(data.session);
+  } catch (error) {
+    document.getElementById("admin-product-message").textContent = error.message;
+  } finally {
+    setBusy(button, false);
+  }
+});
+
+document.getElementById("admin-logout").addEventListener("click", async () => {
+  const { error } = await adminSupabase.auth.signOut();
+  if (error) {
+    document.getElementById("admin-product-message").textContent = error.message;
+    return;
+  }
+  dashboard.hidden = true;
+  loginSection.hidden = false;
+  showLoginMessage("");
+});
+
+adminSupabase.auth.getSession().then(({ data, error }) => {
+  if (error) {
+    showLoginMessage(error.message);
+    return;
+  }
+  if (data.session) showDashboard(data.session);
+}).catch(error => showLoginMessage(error.message || "No pudimos restaurar la sesión."));

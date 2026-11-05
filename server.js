@@ -5,6 +5,15 @@ const { createClient } = require("@supabase/supabase-js");
 const Stripe = require("stripe");
 const products = require("./js/products.js");
 
+const PRODUCT_TYPES = {
+  cap: "Gorras",
+  shirt: "Ropa",
+  hoodie: "Ropa",
+  chain: "Joyería",
+  bracelet: "Joyería",
+  sneaker: "Tenis"
+};
+
 function configuredEnv(name) {
   const value = process.env[name]?.trim();
   return value && !/PEGA_AQUI|TU-PROYECTO/i.test(value) ? value : null;
@@ -27,6 +36,10 @@ const stripeWebhookSecret = configuredEnv("STRIPE_WEBHOOK_SECRET");
 const paypalClientId = configuredEnv("PAYPAL_CLIENT_ID");
 const paypalClientSecret = configuredEnv("PAYPAL_CLIENT_SECRET");
 const paypalWebhookId = configuredEnv("PAYPAL_WEBHOOK_ID");
+const adminEmails = new Set((process.env.ADMIN_EMAILS || "")
+  .split(",")
+  .map(email => email.trim().toLowerCase())
+  .filter(Boolean));
 const PROMO_CODES = new Map([["CAP10", 10], ["STREET15", 15]]);
 const paypalMode = process.env.PAYPAL_MODE || "sandbox";
 if (!["sandbox", "live"].includes(paypalMode)) {
@@ -46,7 +59,6 @@ const adminClient = supabaseServiceRoleKey
     auth: { autoRefreshToken: false, persistSession: false }
   })
   : null;
-const productById = new Map(products.map(product => [product.id, product]));
 const allowedOrigins = new Set([
   siteOrigin,
   "http://localhost:5500",
@@ -122,11 +134,61 @@ async function getAuthenticatedUser(req, res) {
   return { user: data.user };
 }
 
-function getOrderItems(items) {
+async function getAdminUser(req, res) {
+  if (!adminEmails.size || !authClient || !adminClient) {
+    res.status(503).json({ error: "El panel de administración no está configurado." });
+    return null;
+  }
+  const authorization = req.get("authorization") || "";
+  const tokenMatch = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!tokenMatch) {
+    res.status(401).json({ error: "Inicia sesión con una cuenta autorizada." });
+    return null;
+  }
+  const { data, error } = await authClient.auth.getUser(tokenMatch[1]);
+  if (error || !data.user) {
+    res.status(401).json({ error: "Tu sesión ya no es válida. Inicia sesión de nuevo." });
+    return null;
+  }
+  if (!data.user.email_confirmed_at && !data.user.confirmed_at) {
+    res.status(403).json({ error: "Confirma tu correo para administrar el catálogo." });
+    return null;
+  }
+  if (!adminEmails.has(data.user.email?.toLowerCase() || "")) {
+    res.status(403).json({ error: "Esta cuenta no tiene acceso al panel de administración." });
+    return null;
+  }
+  return data.user;
+}
+
+function formatAdminProduct(row) {
+  const template = products.find(product => product.type === row.type);
+  if (!template) throw new Error(`Unknown product type in catalog: ${row.type}`);
+  return {
+    ...template,
+    ...row,
+    tag: "",
+    colorOptions: template.colorOptions,
+    sizeOptions: template.sizeOptions
+  };
+}
+
+async function getProductCatalog() {
+  if (!adminClient) return products;
+  const { data, error } = await adminClient
+    .from("admin_products")
+    .select("id,department,category,type,name,description,price,color,brim,patch,label")
+    .order("id", { ascending: true });
+  if (error) throw error;
+  return [...products, ...data.map(formatAdminProduct)];
+}
+
+function getOrderItems(items, catalog) {
   if (!Array.isArray(items) || items.length === 0 || items.length > 100) {
     return { error: "El carrito no es válido." };
   }
 
+  const productById = new Map(catalog.map(product => [product.id, product]));
   const seenIds = new Set();
   const orderItems = [];
   for (const item of items) {
@@ -279,19 +341,80 @@ app.get("/api/payment-options", (_req, res) => {
   });
 });
 
-app.post("/api/validate-promo", express.json({ limit: "16kb" }), (req, res) => {
-  const validated = getOrderItems(req.body?.items);
-  if (validated.error) return res.status(400).json({ error: validated.error });
-  const pricing = getOrderPricing(validated.items, req.body?.code);
-  if (pricing.error) return res.status(400).json({ error: pricing.error });
-  return res.json({
-    code: pricing.code,
-    percentOff: pricing.percentOff,
-    subtotal: pricing.subtotal,
-    discountAmount: pricing.discountAmount,
-    amount: pricing.amount,
-    currency: "mxn"
-  });
+app.get("/api/products", async (_req, res) => {
+  try {
+    return res.json({ products: await getProductCatalog() });
+  } catch (error) {
+    console.error("Could not load product catalog.", error);
+    return res.status(503).json({ error: "No pudimos cargar el catálogo actualizado." });
+  }
+});
+
+app.get("/api/admin/products", async (req, res) => {
+  try {
+    if (!await getAdminUser(req, res)) return;
+    const catalog = await getProductCatalog();
+    return res.json({ products: catalog.filter(product => !products.some(item => item.id === product.id)) });
+  } catch (error) {
+    console.error("Could not load admin product catalog.", error);
+    return res.status(503).json({ error: "No pudimos cargar los artículos. Verifica la configuración del catálogo." });
+  }
+});
+
+app.post("/api/admin/products", express.json({ limit: "16kb" }), async (req, res) => {
+  try {
+    if (!await getAdminUser(req, res)) return;
+    const { name, description, price, type, category } = req.body || {};
+    const department = PRODUCT_TYPES[type];
+    if (
+      typeof name !== "string" || !name.trim() || name.trim().length > 80 ||
+      typeof description !== "string" || !description.trim() || description.trim().length > 300 ||
+      !department || !Number.isSafeInteger(price) || price < 1 || price > 1000000 ||
+      (category !== undefined && (typeof category !== "string" || category.trim().length > 40))
+    ) {
+      return res.status(400).json({ error: "Revisa nombre, descripción, categoría, tipo y precio del artículo." });
+    }
+
+    const template = products.find(product => product.type === type);
+    const { data, error } = await adminClient.from("admin_products").insert({
+      department,
+      category: category?.trim() || null,
+      type,
+      name: name.trim(),
+      description: description.trim(),
+      price,
+      color: template.color,
+      brim: template.brim,
+      patch: template.patch || null,
+      label: template.label
+    }).select("id,department,category,type,name,description,price,color,brim,patch,label").single();
+    if (error) throw error;
+    return res.status(201).json({ product: formatAdminProduct(data) });
+  } catch (error) {
+    console.error("Could not create admin product.", error);
+    return res.status(503).json({ error: "No pudimos guardar el artículo. Intenta de nuevo." });
+  }
+});
+
+app.post("/api/validate-promo", express.json({ limit: "16kb" }), async (req, res) => {
+  try {
+    const catalog = await getProductCatalog();
+    const validated = getOrderItems(req.body?.items, catalog);
+    if (validated.error) return res.status(400).json({ error: validated.error });
+    const pricing = getOrderPricing(validated.items, req.body?.code);
+    if (pricing.error) return res.status(400).json({ error: pricing.error });
+    return res.json({
+      code: pricing.code,
+      percentOff: pricing.percentOff,
+      subtotal: pricing.subtotal,
+      discountAmount: pricing.discountAmount,
+      amount: pricing.amount,
+      currency: "mxn"
+    });
+  } catch (error) {
+    console.error("Could not validate promotion against product catalog.", error);
+    return res.status(503).json({ error: "No pudimos validar el código con el catálogo actualizado." });
+  }
 });
 
 const createStripeCheckoutSession = async (req, res) => {
@@ -300,7 +423,8 @@ const createStripeCheckoutSession = async (req, res) => {
     const authenticated = await getAuthenticatedUser(req, res);
     if (!authenticated) return;
 
-    const validated = getOrderItems(req.body?.items);
+    const catalog = await getProductCatalog();
+    const validated = getOrderItems(req.body?.items, catalog);
     if (validated.error) return res.status(400).json({ error: validated.error });
     const { user } = authenticated;
     const orderItems = validated.items;
@@ -401,7 +525,8 @@ app.post("/api/paypal/create-order", express.json({ limit: "16kb" }), async (req
     const authenticated = await getAuthenticatedUser(req, res);
     if (!authenticated) return;
 
-    const validated = getOrderItems(req.body?.items);
+    const catalog = await getProductCatalog();
+    const validated = getOrderItems(req.body?.items, catalog);
     if (validated.error) return res.status(400).json({ error: validated.error });
     const { user } = authenticated;
     const orderItems = validated.items;

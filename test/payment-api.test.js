@@ -79,6 +79,15 @@ test("the API remains available and disables checkout when payment credentials a
     stripePublishableKey: null
   });
 
+  const catalog = await fetch(`http://127.0.0.1:${port}/api/products`);
+  assert.equal(catalog.status, 200);
+  const catalogResult = await catalog.json();
+  assert.equal(catalogResult.products.length, 20);
+  assert.equal(catalogResult.products[0].name, "La Clásica");
+
+  const unavailableAdmin = await fetch(`http://127.0.0.1:${port}/api/admin/products`);
+  assert.equal(unavailableAdmin.status, 503);
+
   const validPromo = await fetch(`http://127.0.0.1:${port}/api/validate-promo`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
