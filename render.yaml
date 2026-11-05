@@ -1,7 +1,29 @@
 services:
   - type: web
-    name: capstreet
+    name: capstreet-store
     runtime: static
+    plan: free
     branch: main
     buildCommand: ""
     staticPublishPath: .
+  - type: web
+    name: capstreet-api
+    runtime: node
+    plan: free
+    branch: main
+    rootDir: .
+    buildCommand: npm ci
+    startCommand: npm start
+    envVars:
+      - key: SITE_ORIGIN
+        value: https://capstreet-store.onrender.com
+      - key: SUPABASE_URL
+        value: https://medshszlajttiwfpsjol.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: sb_publishable_5JKhH6JITsProzdf2X_Zzw_9kbR1mnu
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false

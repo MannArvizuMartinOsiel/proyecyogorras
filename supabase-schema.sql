@@ -9,9 +9,15 @@ create table if not exists public.user_profiles (
   city text not null default '',
   state text not null default '',
   phone text not null default '',
+  privacy_policy_version text not null default '',
+  privacy_consent_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.user_profiles
+  add column if not exists privacy_policy_version text not null default '',
+  add column if not exists privacy_consent_at timestamptz;
 
 alter table public.user_profiles enable row level security;
 
@@ -35,3 +41,28 @@ create policy "Users can update their own profile"
   with check ((select auth.uid()) = id);
 
 grant select, insert, update on public.user_profiles to authenticated;
+
+create table if not exists public.orders (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  stripe_checkout_session_id text not null unique,
+  amount integer not null check (amount >= 0),
+  currency text not null default 'mxn',
+  status text not null default 'pending'
+    check (status in ('pending', 'paid', 'failed', 'cancelled')),
+  items jsonb not null default '[]'::jsonb,
+  shipping_address jsonb,
+  customer_email text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.orders enable row level security;
+
+drop policy if exists "Users can view their own orders" on public.orders;
+create policy "Users can view their own orders"
+  on public.orders for select
+  to authenticated
+  using ((select auth.uid()) = user_id);
+
+grant select on public.orders to authenticated;

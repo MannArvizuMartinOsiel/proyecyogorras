@@ -560,6 +560,7 @@
     .remove-button:hover { color: var(--ink); text-decoration: underline; }
     .cart-footer { padding-top: 20px; border-top: 1px solid var(--line); }
     .cart-total { display: flex; justify-content: space-between; margin-bottom: 17px; font-size: 12px; font-weight: 700; }
+    .payment-note { margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.55; }
     .checkout-button { width: 100%; }
     .checkout-button:disabled { opacity: .45; cursor: not-allowed; }
     .toast {
@@ -627,6 +628,18 @@
     }
     .account-field input:focus { border-color: var(--ink); }
     .account-field[hidden] { display: none; }
+    .privacy-consent {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      margin: 14px 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.55;
+    }
+    .privacy-consent[hidden] { display: none; }
+    .privacy-consent input { flex: 0 0 auto; width: 16px; height: 16px; margin: 1px 0 0; accent-color: var(--ink); }
+    .privacy-consent a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
     .password-wrap { position: relative; }
     .password-wrap input { padding-right: 67px; }
     .password-toggle { position: absolute; top: 0; right: 0; height: 44px; padding: 0 12px; border: 0; background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; }
@@ -636,6 +649,33 @@
     .account-success { padding: 14px 0 0; text-align: center; }
     .account-success-mark { width: 50px; height: 50px; display: grid; place-items: center; margin: 0 auto 15px; border-radius: 50%; background: var(--accent); font-size: 22px; }
     .account-success .button { margin-top: 10px; }
+    .order-history { margin: 20px 0 8px; padding-top: 17px; border-top: 1px solid var(--line); text-align: left; }
+    .order-history h3 { margin: 0 0 10px; font-family: var(--font-display); font-size: 16px; }
+    .order-list { display: grid; gap: 8px; }
+    .order-entry { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; background: #e9e8e1; font-size: 11px; }
+    .order-entry span:last-child { flex: 0 0 auto; font-weight: 700; }
+    .order-empty, .order-error { color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .privacy-page {
+      width: min(820px, calc(100% - 48px));
+      margin: 0 auto;
+      padding: 82px 0 96px;
+    }
+    .privacy-page h1 {
+      margin: 0 0 10px;
+      font-family: var(--font-display);
+      font-size: clamp(42px, 7vw, 68px);
+      letter-spacing: -.08em;
+      line-height: 1;
+    }
+    .privacy-updated { margin: 0 0 28px; color: var(--muted); font-size: 13px; }
+    .privacy-draft { margin: 0 0 34px; padding: 17px 19px; border-left: 3px solid var(--accent); background: #e9e8e1; font-size: 13px; line-height: 1.7; }
+    .privacy-page section { padding: 24px 0; border-top: 1px solid var(--line); }
+    .privacy-page h2 { margin: 0 0 12px; font-family: var(--font-display); font-size: 22px; letter-spacing: -.045em; }
+    .privacy-page p, .privacy-page li { color: #4f4e49; font-size: 14px; line-height: 1.8; }
+    .privacy-page ul { padding-left: 22px; }
+    .privacy-page a:not(.button) { text-decoration: underline; text-underline-offset: 3px; }
+    .privacy-contact { padding: 18px; background: #e9e8e1; }
+    .privacy-back { min-height: 40px; padding: 0 16px; }
 
     @media (max-width: 900px) {
       .hero { min-height: 500px; gap: 20px; }
@@ -686,6 +726,8 @@
       .footer-links { gap: 15px; }
       .cart-drawer { padding: 22px 18px; }
       .account-modal { padding: 30px 22px 24px; }
+      .privacy-page { width: calc(100% - 36px); padding: 60px 0 70px; }
+      .privacy-page p, .privacy-page li { font-size: 13px; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

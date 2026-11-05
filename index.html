@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div class="announcement">Envío gratis en compras mayores a <span>$999</span> · Hechas para durar</div>
+  <div class="announcement">Envíos a todo México · <span>Hechas para durar</span></div>
   <header class="site-header">
     <nav class="nav" aria-label="Navegación principal">
       <a class="brand" href="#" aria-label="CAPSTREET, inicio"><span class="brand-mark">C</span> CAPSTREET</a>
@@ -124,7 +124,7 @@
   <footer id="footer">
     <a class="brand" href="#" aria-label="CAPSTREET, inicio"><span class="brand-mark">C</span> CAPSTREET</a>
     <span>© 2025 CAPSTREET. Hecho para acompañarte.</span>
-    <div class="footer-links"><a href="#coleccion">Tienda</a><a href="mailto:hola@capstreet.mx">Escríbenos</a><a href="#nosotros">Nosotros</a></div>
+    <div class="footer-links"><a href="#coleccion">Tienda</a><a href="mailto:hola@capstreet.mx">Escríbenos</a><a href="#nosotros">Nosotros</a><a href="privacy.html">Privacidad</a></div>
   </footer>
 
   <div class="overlay" id="overlay"></div>
@@ -138,6 +138,7 @@
     <div class="cart-items" id="cart-items"></div>
     <div class="cart-footer">
       <div class="cart-total"><span>Total</span><span id="cart-total">$0 MXN</span></div>
+      <p class="payment-note">Para continuar necesitas una cuenta. El pago debe completarse en una pasarela segura; CAPSTREET no guarda los datos de tu tarjeta.</p>
       <button class="button checkout-button" id="checkout-button" disabled>Continuar compra
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12h15m-6-6 6 6-6 6"/></svg>
       </button>
@@ -209,12 +210,16 @@
             <label for="account-phone">Teléfono de contacto</label>
             <input id="account-phone" name="phone" type="tel" autocomplete="tel" placeholder="10 dígitos">
           </div>
+          <label class="privacy-consent" id="privacy-consent-field" hidden>
+            <input id="privacy-consent" name="privacy_consent" type="checkbox">
+            <span>Leí y acepto el <a href="privacy.html" target="_blank" rel="noopener">Aviso de Privacidad</a> y el tratamiento de mis datos para gestionar mi cuenta y mis compras.</span>
+          </label>
           <button class="button account-submit" id="account-submit" type="submit">Entrar
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12h15m-6-6 6 6-6 6"/></svg>
           </button>
           <p class="account-message" id="account-message" aria-live="polite"></p>
         </form>
-        <p class="account-note">Para activar cuentas reales, configura la URL y la clave pública de Supabase, aplica supabase-schema.sql y publica esta página en un dominio permitido. La dirección solo se guarda después de verificar el correo.</p>
+        <p class="account-note">Crea tu cuenta y confirma el correo para guardar tu dirección y realizar compras. La dirección solo se guarda después de verificar el correo.</p>
         </div>
         <div class="account-success" id="account-verification" hidden>
           <div class="account-success-mark">@</div>
@@ -232,12 +237,18 @@
           <h2 id="account-success-title">¡Qué gusto verte!</h2>
           <p class="account-intro" id="account-success-description"></p>
           <p class="account-intro" id="account-profile-address"></p>
+          <section class="order-history" aria-labelledby="account-orders-title">
+            <h3 id="account-orders-title">Mis pedidos</h3>
+            <div id="account-orders" aria-live="polite">Cargando tus pedidos...</div>
+          </section>
           <button class="button" id="logout-button" type="button">Cerrar sesión</button>
         </div>
       </div>
     </section>
   </div>
 
+  <script src="js/products.js"></script>
+  <script src="js/config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/app.js"></script>
 </body>

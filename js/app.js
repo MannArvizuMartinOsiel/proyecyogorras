@@ -1,34 +1,33 @@
-const products = [
-      { id: 1, department: "Gorras", category: "Clásicas", type: "cap", name: "La Clásica", description: "Negro / Ajuste clásico", price: 549, tag: "Favorita", color: "#171715", brim: "#292925", patch: "#d7f45b", label: "CAPSTREET" },
-      { id: 2, department: "Gorras", category: "Clásicas", type: "cap", name: "Día Blanco", description: "Blanco hueso / Ajuste clásico", price: 549, tag: "Nuevo", color: "#f5f4ee", brim: "#d7d6cf", patch: "#171715", label: "S." },
-      { id: 3, department: "Gorras", category: "Urbanas", type: "cap", name: "CAPSTREET Club", description: "Negro lavado / Fit relajado", price: 629, tag: "", color: "#393936", brim: "#252523", patch: "#efeee8", label: "CC" },
-      { id: 4, department: "Gorras", category: "Edición especial", type: "cap", name: "Contraste", description: "Paneles bicolor / Edición limitada", price: 699, tag: "Edición limitada", color: "#f3f2ec", brim: "#171715", patch: "#171715", label: "01" },
-      { id: 5, department: "Gorras", category: "Urbanas", type: "cap", name: "Noche Larga", description: "Negro total / Visera curva", price: 599, tag: "", color: "#20201e", brim: "#131312", patch: "#f5f4ee", label: "NOCHE" },
-      { id: 6, department: "Gorras", category: "Clásicas", type: "cap", name: "Sin Prisa", description: "Gris piedra / Algodón suave", price: 579, tag: "Nuevo", color: "#b9b8b1", brim: "#92918a", patch: "#171715", label: "SP" },
-      { id: 7, department: "Gorras", category: "Edición especial", type: "cap", name: "Fuera de Serie", description: "Negro / Bordado tonal", price: 749, tag: "Edición limitada", color: "#171715", brim: "#343430", patch: "#d7f45b", label: "FS" },
-      { id: 8, department: "Gorras", category: "Urbanas", type: "cap", name: "Doble Tono", description: "Blanco y negro / Fit relajado", price: 649, tag: "", color: "#f5f4ee", brim: "#292926", patch: "#171715", label: "D/T" },
-      { id: 9, department: "Ropa", type: "shirt", name: "Playera Street", description: "Algodón pesado / Negro", price: 699, tag: "Más vendido", color: "#171715", brim: "#d7f45b", label: "CAPSTREET" },
-      { id: 10, department: "Ropa", type: "hoodie", name: "Hoodie Block", description: "Felpa suave / Gris jaspe", price: 1199, tag: "Nuevo", color: "#a9a8a1", brim: "#171715", label: "C." },
-      { id: 11, department: "Ropa", type: "shirt", name: "Playera Essential", description: "Corte relajado / Blanco", price: 649, tag: "", color: "#f5f4ee", brim: "#171715", label: "CS" },
-      { id: 12, department: "Ropa", type: "hoodie", name: "Hoodie Midnight", description: "Oversize / Negro", price: 1299, tag: "", color: "#252523", brim: "#d7f45b", label: "STREET" },
-      { id: 13, department: "Joyería", type: "chain", name: "Cadena Link", description: "Acero inoxidable / Plateado", price: 799, tag: "Acero inoxidable", color: "#c5c3ba", brim: "#8d8a80", label: "CS" },
-      { id: 14, department: "Joyería", type: "bracelet", name: "Pulsera Core", description: "Acero pulido / Ajustable", price: 499, tag: "", color: "#b6b3a9", brim: "#77746b", label: "C" },
-      { id: 15, department: "Joyería", type: "chain", name: "Cadena Bold", description: "Eslabón grueso / Acero", price: 999, tag: "Nuevo", color: "#d6d3c8", brim: "#88857c", label: "CAP" },
-      { id: 16, department: "Joyería", type: "bracelet", name: "Brazalete Mono", description: "Acabado negro / Minimalista", price: 599, tag: "", color: "#30302d", brim: "#171715", label: "C" },
-      { id: 17, department: "Tenis", type: "sneaker", name: "Court Low", description: "Blanco y negro / Uso diario", price: 1499, tag: "Favoritos", color: "#f5f4ee", brim: "#171715", label: "CS" },
-      { id: 18, department: "Tenis", type: "sneaker", name: "Runner Mono", description: "Negro total / Suela cómoda", price: 1699, tag: "Nuevo", color: "#252523", brim: "#d7f45b", label: "C" },
-      { id: 19, department: "Tenis", type: "sneaker", name: "Court Contrast", description: "Diseño bicolor / Silueta clásica", price: 1599, tag: "", color: "#e8e7df", brim: "#171715", label: "ST" },
-      { id: 20, department: "Tenis", type: "sneaker", name: "Street High", description: "Caña alta / Negro y blanco", price: 1799, tag: "", color: "#171715", brim: "#f5f4ee", label: "CS" }
-    ];
+const products = window.CAPSTREET_PRODUCTS;
+const CHECKOUT_API_URL = window.CAPSTREET_CONFIG?.checkoutApiUrl ||
+  (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+    ? "http://localhost:3001"
+    : "https://capstreet-api.onrender.com");
+const CHECKOUT_PENDING_KEY = "capstreet-checkout-pending";
 
-    const cart = new Map();
+    function loadSavedCart() {
+      try {
+        const savedCart = localStorage.getItem("capstreet-cart");
+        if (!savedCart) return new Map();
+        const entries = JSON.parse(savedCart);
+        if (!Array.isArray(entries)) throw new TypeError("El carrito guardado no es una lista válida.");
+        return new Map(entries.filter(([id, quantity]) =>
+          products.some(product => product.id === id) &&
+          Number.isInteger(quantity) &&
+          quantity > 0 &&
+          quantity <= 99
+        ));
+      } catch (error) {
+        console.error("No se pudo recuperar el carrito guardado.", error);
+        return new Map();
+      }
+    }
+
+    const cart = loadSavedCart();
     const favorites = new Set();
-    const SUPABASE_URL = "https://TU-PROYECTO.supabase.co";
-    const SUPABASE_ANON_KEY = "PEGA_AQUI_TU_CLAVE_PUBLICA_ANON";
-    const supabaseConfigured = SUPABASE_URL.startsWith("https://") &&
-      !SUPABASE_URL.includes("TU-PROYECTO") &&
-      SUPABASE_ANON_KEY !== "PEGA_AQUI_TU_CLAVE_PUBLICA_ANON";
-    const supabaseClient = supabaseConfigured && window.supabase
+    const SUPABASE_URL = window.CAPSTREET_CONFIG.supabaseUrl;
+    const SUPABASE_ANON_KEY = window.CAPSTREET_CONFIG.supabaseAnonKey;
+    const supabaseClient = window.supabase?.createClient
       ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         auth: {
           autoRefreshToken: true,
@@ -45,6 +44,8 @@ const products = [
     let accountMode = "login";
     let accountPreviousFocus = null;
     let accountBusy = false;
+    let checkoutBusy = false;
+    let checkoutPending = localStorage.getItem(CHECKOUT_PENDING_KEY) === "true";
 
     function capSvg(product, className = "product-art") {
       const { color, brim, patch, label } = product;
@@ -132,6 +133,11 @@ const products = [
     function renderCart() {
       const count = [...cart.values()].reduce((sum, quantity) => sum + quantity, 0);
       const total = [...cart.entries()].reduce((sum, [id, quantity]) => sum + products.find(item => item.id === id).price * quantity, 0);
+      try {
+        localStorage.setItem("capstreet-cart", JSON.stringify([...cart.entries()]));
+      } catch (error) {
+        console.error("No se pudo guardar el carrito en este navegador.", error);
+      }
       document.getElementById("cart-count").textContent = count;
       document.getElementById("drawer-count").textContent = `(${count})`;
       document.getElementById("cart-total").textContent = `${formatPrice(total)} MXN`;
@@ -250,6 +256,10 @@ const products = [
         element.hidden = isLogin;
         input.required = !isLogin && inputId !== "account-interior";
       });
+      const consentField = document.getElementById("privacy-consent-field");
+      const consentInput = document.getElementById("privacy-consent");
+      consentField.hidden = isLogin;
+      consentInput.required = !isLogin;
       document.getElementById("account-title").textContent = isLogin ? "Qué bueno verte." : "Únete al street.";
       document.getElementById("account-intro").textContent = isLogin
         ? "Inicia sesión para guardar tus favoritos y tener todo tu estilo en un solo lugar."
@@ -287,7 +297,68 @@ const products = [
         document.getElementById("account-profile-address").textContent = address
           ? `Dirección guardada: ${address}`
           : "Todavía no hay una dirección guardada en tu perfil.";
+        loadAccountOrders();
       }
+    }
+
+    function setCheckoutPending(pending) {
+      checkoutPending = pending;
+      if (pending) localStorage.setItem(CHECKOUT_PENDING_KEY, "true");
+      else localStorage.removeItem(CHECKOUT_PENDING_KEY);
+    }
+
+    function renderOrderMessage(container, message, className) {
+      const paragraph = document.createElement("p");
+      paragraph.className = className;
+      paragraph.textContent = message;
+      container.replaceChildren(paragraph);
+    }
+
+    async function loadAccountOrders() {
+      const container = document.getElementById("account-orders");
+      if (!supabaseClient || !accountEmail) {
+        renderOrderMessage(container, "Inicia sesión para ver tus pedidos.", "order-empty");
+        return;
+      }
+
+      const { data, error } = await supabaseClient
+        .from("orders")
+        .select("id,amount,currency,status,created_at")
+        .order("created_at", { ascending: false })
+        .limit(10);
+      if (error) {
+        console.error("No se pudieron cargar los pedidos de la cuenta.", error);
+        renderOrderMessage(container, "No se pudieron cargar tus pedidos. Intenta de nuevo.", "order-error");
+        return;
+      }
+      if (!data.length) {
+        renderOrderMessage(container, "Tus compras pagadas aparecerán aquí.", "order-empty");
+        return;
+      }
+
+      const statuses = {
+        pending: "Pago pendiente",
+        paid: "Pagado",
+        failed: "Pago fallido",
+        cancelled: "Cancelado"
+      };
+      const list = document.createElement("div");
+      list.className = "order-list";
+      data.forEach(order => {
+        const row = document.createElement("div");
+        row.className = "order-entry";
+        const label = document.createElement("span");
+        const date = new Date(order.created_at).toLocaleDateString("es-MX");
+        label.textContent = `Pedido ${order.id.slice(0, 8).toUpperCase()} · ${date} · ${statuses[order.status] || "En proceso"}`;
+        const amount = document.createElement("span");
+        amount.textContent = new Intl.NumberFormat("es-MX", {
+          style: "currency",
+          currency: order.currency.toUpperCase()
+        }).format(order.amount / 100);
+        row.append(label, amount);
+        list.append(row);
+      });
+      container.replaceChildren(list);
     }
 
     function setAccountOpen(isOpen) {
@@ -362,7 +433,9 @@ const products = [
         postal_code: metadata.postal_code || "",
         city: metadata.city || "",
         state: metadata.state || "",
-        phone: metadata.phone || ""
+        phone: metadata.phone || "",
+        privacy_policy_version: metadata.privacy_policy_version || "",
+        privacy_consent_at: metadata.privacy_consent_at || null
       };
       const { data, error } = await supabaseClient
         .from("user_profiles")
@@ -405,8 +478,8 @@ const products = [
     document.getElementById("account-form").addEventListener("submit", async event => {
       event.preventDefault();
       if (accountBusy) return;
-      if (!supabaseConfigured || !supabaseClient) {
-        showAccountMessage("Falta configurar la URL y la clave pública de Supabase en este archivo.");
+      if (!supabaseClient) {
+        showAccountMessage("No se pudo cargar el servicio de cuentas. Comprueba tu conexión e inténtalo de nuevo.");
         return;
       }
 
@@ -440,7 +513,12 @@ const products = [
             password,
             options: {
               emailRedirectTo: redirectUrl,
-              data: { full_name: fullName, ...address }
+              data: {
+                full_name: fullName,
+                ...address,
+                privacy_policy_version: "2026-11-04",
+                privacy_consent_at: new Date().toISOString()
+              }
             }
           });
           if (error) throw error;
@@ -452,6 +530,9 @@ const products = [
           await saveAccountProfile(data.user);
           accountEmail = data.user.email || email;
           renderAccount();
+          setAccountOpen(false);
+          await handleCheckoutReturn();
+          await continueCheckoutAfterAccount();
         } else {
           const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
           if (error) throw error;
@@ -459,6 +540,9 @@ const products = [
           accountEmail = data.user.email || email;
           document.getElementById("account-password").value = "";
           renderAccount();
+          setAccountOpen(false);
+          await handleCheckoutReturn();
+          await continueCheckoutAfterAccount();
         }
       } catch (error) {
         showAccountMessage(getAuthErrorMessage(error));
@@ -476,6 +560,7 @@ const products = [
       }
       accountEmail = "";
       accountProfile = null;
+      setCheckoutPending(false);
       document.getElementById("account-form").reset();
       document.getElementById("account-password").type = "password";
       document.getElementById("toggle-password").textContent = "Mostrar";
@@ -501,6 +586,8 @@ const products = [
           }
         }
         renderAccount();
+        await handleCheckoutReturn();
+        if (checkoutPending && user) await continueCheckoutAfterAccount();
       }).catch(error => showAccountMessage(getAuthErrorMessage(error)));
       supabaseClient.auth.onAuthStateChange((_event, session) => {
         accountEmail = session?.user.email || "";
@@ -529,9 +616,133 @@ const products = [
       }
     });
 
-    document.getElementById("checkout-button").addEventListener("click", () => {
-      showToast("¡Gracias! Pronto podrás finalizar tu compra.");
-    });
+    async function continueCheckoutAfterAccount() {
+      if (!checkoutPending) return;
+      await startCheckout();
+    }
+
+    async function startCheckout() {
+      if (!cart.size) return;
+      if (checkoutBusy) return;
+      if (!supabaseClient) {
+        setCheckoutPending(true);
+        setAccountMode("register");
+        setAccountOpen(true);
+        showAccountMessage("No pudimos conectar con el servicio de cuentas. Comprueba tu conexión e inténtalo de nuevo.");
+        return;
+      }
+
+      const button = document.getElementById("checkout-button");
+      const originalLabel = button.innerHTML;
+      checkoutBusy = true;
+      button.disabled = true;
+      button.textContent = "Conectando con Stripe...";
+      try {
+        const { data, error } = await supabaseClient.auth.getSession();
+        if (error) throw error;
+        if (!data.session) {
+          setCheckoutPending(true);
+          setAccountMode("register");
+          setAccountOpen(true);
+          showAccountMessage("Crea tu cuenta o inicia sesión para continuar con tu compra. Tu carrito se conservará.");
+          return;
+        }
+        if (!data.session.user.email_confirmed_at && !data.session.user.confirmed_at) {
+          setCheckoutPending(true);
+          setAccountMode("login");
+          setAccountOpen(true);
+          showAccountMessage("Confirma tu correo para continuar con la compra.");
+          return;
+        }
+
+        setCheckoutPending(false);
+        const response = await fetch(`${CHECKOUT_API_URL}/api/create-checkout-session`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${data.session.access_token}`
+          },
+          body: JSON.stringify({ items: [...cart.entries()].map(([id, quantity]) => ({ id, quantity })) })
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          if (response.status === 401) {
+            setCheckoutPending(true);
+            setAccountMode("login");
+            setAccountOpen(true);
+          }
+          throw new Error(result.error || "No pudimos iniciar el pago.");
+        }
+        if (typeof result.checkoutUrl !== "string") {
+          throw new Error("La pasarela no devolvió un enlace de pago válido.");
+        }
+        const checkoutUrl = new URL(result.checkoutUrl);
+        if (checkoutUrl.protocol !== "https:" || !checkoutUrl.hostname.endsWith(".stripe.com")) {
+          throw new Error("La pasarela devolvió una dirección de pago no válida.");
+        }
+        window.location.assign(checkoutUrl.href);
+      } catch (error) {
+        const message = error instanceof TypeError
+          ? "No se pudo conectar con el servicio de pago. Verifica que la API de Render esté activa."
+          : error.message;
+        showToast(message);
+        console.error("No se pudo completar el inicio de checkout.", error);
+      } finally {
+        checkoutBusy = false;
+        button.disabled = cart.size === 0;
+        button.innerHTML = originalLabel;
+      }
+    }
+
+    async function handleCheckoutReturn() {
+      const url = new URL(window.location.href);
+      const checkoutState = url.searchParams.get("checkout");
+      if (checkoutState === "cancel") {
+        showToast("Pago cancelado. Tu carrito sigue guardado.");
+        url.searchParams.delete("checkout");
+        window.history.replaceState({}, "", url);
+        return;
+      }
+      if (checkoutState !== "success") return;
+      const sessionId = url.searchParams.get("session_id");
+      if (!sessionId || !supabaseClient) {
+        showToast("Inicia sesión para verificar el estado de tu pago.");
+        return;
+      }
+
+      try {
+        const { data, error } = await supabaseClient.auth.getSession();
+        if (error) throw error;
+        if (!data.session) {
+          setCheckoutPending(false);
+          setAccountMode("login");
+          setAccountOpen(true);
+          showAccountMessage("Inicia sesión con la cuenta usada para pagar y verificaremos el pedido.");
+          return;
+        }
+        const response = await fetch(`${CHECKOUT_API_URL}/api/checkout-session/${encodeURIComponent(sessionId)}`, {
+          headers: { Authorization: `Bearer ${data.session.access_token}` }
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "No pudimos verificar el pago.");
+        if (result.paymentStatus === "paid" && result.order.status === "paid") {
+          cart.clear();
+          renderCart();
+          showToast("¡Compra confirmada! Consulta el seguimiento en Mi cuenta.");
+          await loadAccountOrders();
+        } else {
+          showToast("El pago aún no aparece como completado. Tu carrito sigue guardado.");
+        }
+        url.searchParams.delete("checkout");
+        url.searchParams.delete("session_id");
+        window.history.replaceState({}, "", url);
+      } catch (error) {
+        showToast(error.message || "No pudimos verificar tu pago.");
+        console.error("No se pudo verificar el resultado del checkout.", error);
+      }
+    }
+
+    document.getElementById("checkout-button").addEventListener("click", startCheckout);
 
     renderProducts();
     renderCart();
