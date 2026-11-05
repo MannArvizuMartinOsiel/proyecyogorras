@@ -8,6 +8,7 @@ Tienda estática en español con API de pagos separada para Render. El servidor 
 - **Stripe Checkout:** tarjetas (Visa, Mastercard y American Express según la cuenta), Apple Pay y Google Pay cuando Stripe y el dispositivo los habilitan. SPEI usa `mx_bank_transfer`. OXXO se ofrece solo si está habilitado para la cuenta Stripe; su pago puede tardar en confirmarse.
 - **PayPal Checkout:** crea y captura órdenes en el servidor usando PayPal Orders v2. La captura se valida contra el pedido y el importe almacenado.
 - En el carrito se pueden elegir color y talla, y canjear `CAP10` (10 %) o `STREET15` (15 %). La API valida el código y vuelve a calcular el descuento antes de crear un pago; los importes de Stripe y PayPal se basan en el catálogo del servidor.
+- La API de Stripe ofrece `POST /create-checkout-session` y mantiene `POST /api/create-checkout-session` como alias compatible.
 
 Stripe aloja la captura de datos de tarjeta; PayPal redirige a su propio sitio. CAPSTREET no recibe ni almacena números de tarjeta ni códigos de seguridad. Las claves de prueba y de producción deben mantenerse separadas.
 
@@ -35,7 +36,7 @@ Si un proveedor no tiene las variables necesarias, la API sigue funcionando, inf
 
 1. En Supabase, ejecuta `supabase-schema.sql` en SQL Editor. Incluye columnas idempotentes para guardar pedidos Stripe, PayPal y descuentos promocionales.
 2. En Supabase Auth, agrega la URL pública del Static Site a las URLs permitidas para confirmación de correo.
-3. Conecta el repositorio a Render usando `render.yaml`. El Static Site usa rama `main`, Build Command vacío y Publish Directory `.`. El servicio Node usa `npm ci`, `npm start` y health check `/health`.
+3. Conecta el repositorio a Render usando `render.yaml`. El Static Site usa rama `main`, Build Command vacío y Publish Directory `.`. El servicio Web `capstreet-api` usa `npm ci`, `npm start` y health check `/health`. Tras el despliegue, comprueba que `https://capstreet-api.onrender.com/health` responda `200` con JSON; si Render muestra otro dominio en el servicio, actualiza `checkoutApiUrl` en `js/config.js` con ese dominio.
 4. Completa los secretos requeridos del servicio `capstreet-api` en el panel de Render. Mantén `PAYPAL_MODE=sandbox` y claves Stripe `test` al validar.
 5. En Stripe Dashboard, habilita tarjetas, Bank Transfers y OXXO (si la cuenta es elegible). Añade un webhook a `https://TU-API.onrender.com/api/stripe-webhook` con `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` y `checkout.session.expired`.
 6. En PayPal Developer Dashboard, crea una app sandbox y un webhook a `https://TU-API.onrender.com/api/paypal-webhook` con el evento `PAYMENT.CAPTURE.COMPLETED`. Pon el `PAYPAL_WEBHOOK_ID` en Render.

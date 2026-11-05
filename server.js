@@ -249,6 +249,10 @@ async function savePaidPayPalOrder(order, capture) {
   if (error) throw error;
 }
 
+app.get("/", (_req, res) => {
+  res.json({ service: "capstreet-api", status: "ok", health: "/health" });
+});
+
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
@@ -290,7 +294,7 @@ app.post("/api/validate-promo", express.json({ limit: "16kb" }), (req, res) => {
   });
 });
 
-app.post("/api/create-checkout-session", express.json({ limit: "16kb" }), async (req, res) => {
+const createStripeCheckoutSession = async (req, res) => {
   if (!requireProvider("stripe", res)) return;
   try {
     const authenticated = await getAuthenticatedUser(req, res);
@@ -385,7 +389,10 @@ app.post("/api/create-checkout-session", express.json({ limit: "16kb" }), async 
       error: "Stripe no pudo preparar el pago. Confirma los métodos habilitados en Stripe y vuelve a intentar."
     });
   }
-});
+};
+
+app.post("/create-checkout-session", express.json({ limit: "16kb" }), createStripeCheckoutSession);
+app.post("/api/create-checkout-session", express.json({ limit: "16kb" }), createStripeCheckoutSession);
 
 app.post("/api/paypal/create-order", express.json({ limit: "16kb" }), async (req, res) => {
   if (!requireProvider("paypal", res)) return;

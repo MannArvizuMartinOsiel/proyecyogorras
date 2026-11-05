@@ -57,6 +57,14 @@ test("the API remains available and disables checkout when payment credentials a
     payments: { stripe: false, paypal: false }
   });
 
+  const apiRoot = await fetch(`http://127.0.0.1:${port}/`);
+  assert.equal(apiRoot.status, 200);
+  assert.deepEqual(await apiRoot.json(), {
+    service: "capstreet-api",
+    status: "ok",
+    health: "/health"
+  });
+
   const options = await fetch(`http://127.0.0.1:${port}/api/payment-options`);
   assert.deepEqual(await options.json(), {
     stripe: false,
@@ -134,4 +142,11 @@ test("the API remains available and disables checkout when payment credentials a
     body: JSON.stringify({ items: [{ id: 1, quantity: 1 }] })
   });
   assert.equal(unavailableStripeCheckout.status, 503);
+
+  const unavailableStripeAlias = await fetch(`http://127.0.0.1:${port}/create-checkout-session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items: [{ id: 1, quantity: 1 }] })
+  });
+  assert.equal(unavailableStripeAlias.status, 503);
 });

@@ -25,6 +25,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-3.5 3.2-5.3 7-5.3s6.3 1.8 7 5.3"/></svg>
           <span id="account-label">Mi cuenta</span>
         </button>
+        <button class="icon-button wishlist-open-button" id="open-wishlist" type="button" aria-label="Abrir lista de deseos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20.8 8.8c0 4.1-8.8 10.1-8.8 10.1S3.2 12.9 3.2 8.8A4.3 4.3 0 0 1 12 6.7a4.3 4.3 0 0 1 8.8 2.1Z"/></svg>
+          <span class="wishlist-count" id="wishlist-count">0</span>
+        </button>
         <button class="icon-button" id="open-cart" aria-label="Abrir carrito">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 4h2l2.2 11.1a2 2 0 0 0 2 1.6h8.4a2 2 0 0 0 2-1.6L21 8H6"/><circle cx="10" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg>
           <span class="cart-count" id="cart-count">0</span>
@@ -134,6 +138,21 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m6 6 12 12M18 6 6 18"/></svg>
       </button>
       <div class="product-modal-content" id="product-modal-content"></div>
+    </section>
+  </div>
+  <div class="wishlist-overlay" id="wishlist-overlay" aria-hidden="true">
+    <section class="wishlist-panel" role="dialog" aria-modal="true" aria-labelledby="wishlist-title">
+      <div class="wishlist-heading">
+        <div>
+          <p class="eyebrow">Tus favoritos</p>
+          <h2 id="wishlist-title">Lista de deseos <span id="wishlist-heading-count">(0)</span></h2>
+        </div>
+        <button class="icon-button" id="close-wishlist" type="button" aria-label="Cerrar lista de deseos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="wishlist-items" id="wishlist-items"></div>
+      <button class="button wishlist-continue" id="wishlist-continue" type="button">Seguir explorando</button>
     </section>
   </div>
   <aside class="cart-drawer" id="cart-drawer" aria-label="Carrito de compras" aria-hidden="true">
