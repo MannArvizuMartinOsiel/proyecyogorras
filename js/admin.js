@@ -62,7 +62,11 @@ async function adminRequest(path, session, options = {}) {
   if (response.status === 404) {
     throw new Error(`No encontramos la API de administración en ${adminApiUrl}. Verifica el dominio del servicio Web en Render y que esté desplegado.`);
   }
-  if (!response.ok) throw new Error(result.error || "No se pudo completar la solicitud.");
+  if (!response.ok) {
+    const error = new Error(result.error || "No se pudo completar la solicitud.");
+    error.status = response.status;
+    throw error;
+  }
   return result;
 }
 
@@ -139,16 +143,22 @@ async function loadAdminProducts(session) {
 }
 
 async function showDashboard(session) {
+  document.getElementById("admin-session-email").textContent = session.user.email;
+  loginSection.hidden = true;
+  dashboard.hidden = false;
+  showLoginMessage("");
+  const message = document.getElementById("admin-product-message");
+  message.textContent = "";
   try {
-    const result = await adminRequest("/api/admin/products", session);
-    renderProducts(result.products);
-    document.getElementById("admin-session-email").textContent = session.user.email;
-    loginSection.hidden = true;
-    dashboard.hidden = false;
+    await loadAdminProducts(session);
   } catch (error) {
-    dashboard.hidden = true;
-    loginSection.hidden = false;
-    showLoginMessage(error.message);
+    if (error.status === 401 || error.status === 403) {
+      dashboard.hidden = true;
+      loginSection.hidden = false;
+      showLoginMessage(error.message);
+      return;
+    }
+    message.textContent = `La sesión es válida, pero no se pudo cargar el catálogo: ${error.message}`;
   }
 }
 

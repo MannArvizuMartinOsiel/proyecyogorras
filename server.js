@@ -573,7 +573,9 @@ app.get("/api/admin/products", async (req, res) => {
     if (error.code === "CATALOG_MIGRATION_REQUIRED") {
       return res.status(503).json({ error: error.message });
     }
-    return res.status(503).json({ error: "No pudimos cargar los artículos. Verifica la configuración del catálogo." });
+    return res.status(503).json({
+      error: error.message || "No pudimos cargar el catálogo. Revisa la configuración y los permisos de Supabase."
+    });
   }
 });
 
