@@ -217,7 +217,14 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       const grid = document.getElementById("products-grid");
       document.getElementById("results-count").textContent = `${visibleProducts.length} ${visibleProducts.length === 1 ? "producto" : "productos"}`;
       if (!visibleProducts.length) {
-        grid.innerHTML = `<div class="empty-state">${invalidPriceRange ? "El precio mínimo no puede ser mayor al precio máximo." : "No encontramos productos con esos criterios. Prueba con otros filtros."}</div>`;
+        const departmentHasProducts = activeFilter &&
+          storefrontProducts().some(product => product.department === activeFilter);
+        const emptyMessage = invalidPriceRange
+          ? "El precio mínimo no puede ser mayor al precio máximo."
+          : activeFilter && !departmentHasProducts
+            ? "Próximamente agregaremos productos de esta categoría."
+            : "No encontramos productos con esos criterios. Prueba con otros filtros.";
+        grid.innerHTML = `<div class="empty-state">${emptyMessage}</div>`;
         return;
       }
       grid.innerHTML = visibleProducts.map(product => {
@@ -246,7 +253,10 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       const availableProducts = storefrontProducts();
       const preferredDepartments = ["Gorras", "Ropa", "Tenis", "Joyería", "Perfumes"];
       const departments = [
-        ...preferredDepartments.filter(department => availableProducts.some(product => product.department === department)),
+        ...preferredDepartments.filter(department =>
+          availableProducts.some(product => product.department === department) ||
+          Boolean(publicProductImageUrl(categoryImages[department]))
+        ),
         ...new Set(products
           .map(product => product.department)
           .filter(department => department && !preferredDepartments.includes(department)))
@@ -254,12 +264,13 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       const categories = departments
         .map(department => ({
           department,
-          products: availableProducts.filter(product => product.department === department)
+          products: availableProducts.filter(product => product.department === department),
+          categoryImageUrl: publicProductImageUrl(categoryImages[department])
         }))
-        .filter(category => category.products.length);
+        .filter(category => category.products.length || category.categoryImageUrl);
       const catalog = document.getElementById("category-catalog");
       catalog.dataset.count = String(categories.length);
-      catalog.innerHTML = categories.map(({ department, products: categoryProducts }, index) => {
+      catalog.innerHTML = categories.map(({ department, products: categoryProducts, categoryImageUrl }) => {
         const title = department === "Tenis" ? "Calzado" : department;
         const descriptions = {
           Gorras: "Diseño y actitud",
@@ -268,7 +279,6 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
           "Joyería": "Detalles que completan tu look",
           Perfumes: "Esencias para cada ocasión"
         };
-        const categoryImageUrl = publicProductImageUrl(categoryImages[department]);
         const artwork = categoryImageUrl
           ? `<img class="category-cover" src="${escapeHtml(categoryImageUrl)}" alt="" loading="lazy">`
           : categoryProducts.slice(0, 3).map((product, productIndex) => {
@@ -280,12 +290,14 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
           }, "category-product-art");
           return `<span class="category-product category-product-${productIndex + 1}">${art}</span>`;
         }).join("");
-        const countLabel = String(categoryProducts.length).padStart(2, "0");
+        const countLabel = categoryProducts.length
+          ? `${String(categoryProducts.length).padStart(2, "0")} PRODUCTOS`
+          : "PRÓXIMAMENTE";
         return `
-          <button type="button" class="category-tile" data-department="${escapeHtml(department)}" aria-label="Ver ${escapeHtml(title)}, ${categoryProducts.length} productos">
+          <button type="button" class="category-tile" data-department="${escapeHtml(department)}" aria-label="Ver ${escapeHtml(title)}${categoryProducts.length ? `, ${categoryProducts.length} productos` : ", próximamente"}">
             <span class="category-tile-art" aria-hidden="true">${artwork}</span>
             <span class="category-tile-info">
-              <span class="category-tile-count">${countLabel} PRODUCTOS</span>
+              <span class="category-tile-count">${countLabel}</span>
               <span class="category-tile-name">${escapeHtml(title)}</span>
               <span class="category-tile-description">${escapeHtml(descriptions[department] || "Explora la colección")}</span>
               <span class="category-tile-arrow" aria-hidden="true">↗</span>
