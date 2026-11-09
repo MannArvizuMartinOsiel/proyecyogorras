@@ -421,6 +421,16 @@ async function getCategoryImageCatalog() {
   return Object.fromEntries(data.map(row => [row.department, row.image_url]));
 }
 
+async function getFeaturedProductCatalog() {
+  if (!adminClient) return [];
+  const { data, error } = await adminClient
+    .from("admin_featured_products")
+    .select("product_id,display_order,image_url")
+    .order("display_order", { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
 async function uploadHeroVideo(videoBuffer, contentType) {
   const videoType = HERO_VIDEO_TYPES.get(contentType);
   if (
@@ -854,6 +864,140 @@ app.delete("/api/admin/category-images/:department", async (req, res) => {
     }
     return res.status(error.status || 503).json({
       error: error.message || "No pudimos quitar la imagen de categoría."
+    });
+  }
+});
+
+app.get("/api/featured-products", async (_req, res) => {
+  try {
+    return res.json({ products: await getFeaturedProductCatalog() });
+  } catch (error) {
+    console.error("Could not load featured products.", error);
+    return res.status(503).json({
+      error: "No se pudieron cargar los productos destacados. Verifica que supabase-schema.sql esté actualizado."
+    });
+  }
+});
+
+app.get("/api/admin/featured-products", async (req, res) => {
+  try {
+    if (!await getAdminUser(req, res)) return;
+    return res.json({
+      products: await getFeaturedProductCatalog(),
+      catalog: await getProductCatalog()
+    });
+  } catch (error) {
+    console.error("Could not load admin featured products.", error);
+    return res.status(503).json({
+      error: "No se pudieron cargar los productos destacados. Ejecuta supabase-schema.sql y vuelve a intentar."
+    });
+  }
+});
+
+app.put("/api/admin/featured-products/:id", express.json({ limit: "6mb" }), async (req, res) => {
+  let uploadedImagePath = null;
+  try {
+    if (!await getAdminUser(req, res)) return;
+    const productId = Number(req.params.id);
+    if (!Number.isSafeInteger(productId) || productId < 1) {
+      return res.status(400).json({ error: "El producto seleccionado no es válido." });
+    }
+    if (typeof req.body?.removeImage !== "undefined" && typeof req.body.removeImage !== "boolean") {
+      return res.status(400).json({ error: "La opción para quitar la imagen no es válida." });
+    }
+    const catalog = await getProductCatalog();
+    const product = catalog.find(item => item.id === productId);
+    if (!product) return res.status(404).json({ error: "No encontramos ese producto en el catálogo." });
+    const { data: current, error: currentError } = await adminClient
+      .from("admin_featured_products")
+      .select("product_id,display_order,image_url,image_path")
+      .eq("product_id", productId)
+      .maybeSingle();
+    if (currentError) throw currentError;
+
+    let imageUrl = current?.image_url || null;
+    let imagePath = current?.image_path || null;
+    if (req.body.imageData) {
+      const upload = await uploadProductImage(req.body.imageData);
+      uploadedImagePath = upload.path;
+      imageUrl = upload.url;
+      imagePath = upload.path;
+    } else if (req.body?.removeImage === true) {
+      imageUrl = null;
+      imagePath = null;
+    }
+    let displayOrder = current?.display_order;
+    if (!current) {
+      const featured = await getFeaturedProductCatalog();
+      displayOrder = featured.reduce((max, entry) => Math.max(max, entry.display_order), 0) + 1;
+    }
+    const { error } = await adminClient.from("admin_featured_products").upsert({
+      product_id: productId,
+      display_order: displayOrder,
+      image_url: imageUrl,
+      image_path: imagePath,
+      updated_at: new Date().toISOString()
+    });
+    if (error) throw error;
+    uploadedImagePath = null;
+    if (current?.image_url && current.image_url !== imageUrl) {
+      await removeProductImage(current.image_url);
+    }
+    return res.json({
+      product_id: productId,
+      display_order: displayOrder,
+      image_url: imageUrl,
+      product
+    });
+  } catch (error) {
+    console.error("Could not save featured product.", error);
+    if (uploadedImagePath && adminClient) {
+      const { error: cleanupError } = await adminClient.storage
+        .from(PRODUCT_IMAGE_BUCKET)
+        .remove([uploadedImagePath]);
+      if (cleanupError) console.error("Could not remove orphaned featured product image.", cleanupError);
+    }
+    if (["42P01", "PGRST204", "PGRST205"].includes(error.code) || /admin_featured_products/i.test(error.message || "")) {
+      return res.status(503).json({
+        error: "Falta actualizar Supabase. Ejecuta el archivo supabase-schema.sql y vuelve a intentar."
+      });
+    }
+    return res.status(error.status || 503).json({
+      error: error.message || "No pudimos guardar el producto destacado."
+    });
+  }
+});
+
+app.delete("/api/admin/featured-products/:id", async (req, res) => {
+  try {
+    if (!await getAdminUser(req, res)) return;
+    const productId = Number(req.params.id);
+    if (!Number.isSafeInteger(productId) || productId < 1) {
+      return res.status(400).json({ error: "El producto seleccionado no es válido." });
+    }
+    const { data: current, error: currentError } = await adminClient
+      .from("admin_featured_products")
+      .select("image_url")
+      .eq("product_id", productId)
+      .maybeSingle();
+    if (currentError) throw currentError;
+    if (!current) return res.json({ product_id: productId });
+    const { error } = await adminClient
+      .from("admin_featured_products")
+      .delete()
+      .eq("product_id", productId);
+    if (error) throw error;
+    if (current.image_url) await removeProductImage(current.image_url);
+    return res.json({ product_id: productId });
+  } catch (error) {
+    console.error("Could not remove featured product.", error);
+    if (["42P01", "PGRST204", "PGRST205"].includes(error.code) || /admin_featured_products/i.test(error.message || "")) {
+      return res.status(503).json({
+        error: "Falta actualizar Supabase. Ejecuta el archivo supabase-schema.sql y vuelve a intentar."
+      });
+    }
+    return res.status(error.status || 503).json({
+      error: error.message || "No pudimos quitar el producto destacado."
     });
   }
 });

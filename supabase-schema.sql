@@ -225,6 +225,18 @@ alter table public.admin_category_images enable row level security;
 revoke all on public.admin_category_images from anon, authenticated;
 grant select, insert, update, delete on public.admin_category_images to service_role;
 
+create table if not exists public.admin_featured_products (
+  product_id bigint primary key,
+  display_order integer not null check (display_order > 0),
+  image_url text,
+  image_path text,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.admin_featured_products enable row level security;
+revoke all on public.admin_featured_products from anon, authenticated;
+grant select, insert, update, delete on public.admin_featured_products to service_role;
+
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'hero-videos',

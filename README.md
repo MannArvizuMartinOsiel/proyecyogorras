@@ -21,6 +21,8 @@ Stripe aloja la captura de datos de tarjeta; PayPal redirige a su propio sitio. 
 - Si Supabase no puede cargar el catálogo, el panel muestra los productos iniciales como solo lectura y explica el error; editar, quitar y agregar requieren que `admin_products` exista y que Render esté ejecutando la versión actual del backend.
 - Al agregar o editar artículos se puede subir, reemplazar o quitar una imagen JPG, PNG o WebP de hasta 4 MB. Se guarda en el bucket público `product-images` de Supabase Storage y aparece en la tienda. Los artículos sin imagen conservan la ilustración predeterminada.
 - La sección "Imágenes del mosaico del catálogo" permite subir o quitar una portada JPG, PNG o WebP (máximo 4 MB) para cada departamento. Ejecuta `supabase-schema.sql` para crear `admin_category_images`; si no hay portada personalizada, se muestran las ilustraciones de productos.
+- Ropa y calzado no aparecen como categorías disponibles ni muestran productos de ejemplo hasta que se agregue un artículo de ese departamento desde el panel o se publique uno existente agregándole una imagen.
+- En "Lo más vendido" del administrador puedes seleccionar cualquier artículo del catálogo, asignarle opcionalmente una imagen para su tarjeta y quitarlo cuando quieras. Los productos seleccionados aparecen debajo del mosaico y abren su ficha al pulsarlos. Ejecuta `supabase-schema.sql` para crear `admin_featured_products`.
 - Si la imagen no puede subirse por un error de Storage, guardar el artículo o los demás cambios continúa sin la nueva imagen y el panel avisa del problema.
 - El panel también permite subir, reemplazar o quitar el video ilustrativo de la portada (MP4 o WebM, máximo 20 MB). Se guarda en el bucket público `hero-videos`; al quitarlo, la portada vuelve a mostrar la ilustración de la gorra. Ejecuta `supabase-schema.sql` para crear el bucket y la tabla `site_media`.
 
@@ -49,7 +51,7 @@ Si Render muestra `Invalid supabaseUrl`, fija `SUPABASE_URL` al URL exacto del p
 
 ## Despliegue
 
-1. En Supabase, ejecuta `supabase-schema.sql` en SQL Editor. Incluye las tablas para pedidos, descuentos promocionales, el campo de imagen del catálogo y la configuración del bucket público de imágenes.
+1. En Supabase, ejecuta `supabase-schema.sql` en SQL Editor. Incluye las tablas para pedidos, descuentos promocionales, imágenes del mosaico, productos destacados y la configuración de los buckets públicos.
 2. En Supabase Auth, agrega la URL pública del Static Site a las URLs permitidas para confirmación de correo.
 3. Conecta el repositorio a Render usando `render.yaml`. El Static Site `proyecyogorras` usa rama `main`, Build Command vacío y Publish Directory `.`. El servicio Web `capstreet-backend` usa `npm ci`, `npm start` y health check `/health`. Tras el despliegue, comprueba que `https://capstreet-backend.onrender.com/health` responda `200` con JSON; si Render asigna otro dominio, actualiza `checkoutApiUrl` en `js/config.js` y `SITE_ORIGIN` en el Web Service.
 4. Completa los secretos requeridos del servicio `capstreet-backend` en el panel de Render. Mantén `PAYPAL_MODE=sandbox` y claves Stripe `test` al validar.

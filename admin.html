@@ -64,6 +64,25 @@
         <div class="admin-category-image-list" id="admin-category-image-list"></div>
         <p class="admin-message" id="admin-category-images-message" role="status" aria-live="polite"></p>
       </section>
+      <section class="admin-card admin-featured-products" aria-labelledby="admin-featured-products-title">
+        <h3 id="admin-featured-products-title">Lo más vendido</h3>
+        <p>Elige productos del catálogo para destacarlos en la tienda. Al pulsarlos, se abrirá directamente su ficha.</p>
+        <div class="admin-featured-form">
+          <label for="featured-product-select">Producto</label>
+          <select id="featured-product-select" required>
+            <option value="">Selecciona un producto</option>
+          </select>
+          <label for="featured-product-image">Imagen para la tarjeta <span>(opcional, JPG/PNG/WebP, máximo 4 MB)</span></label>
+          <input id="featured-product-image" type="file" accept="image/jpeg,image/png,image/webp">
+          <div class="admin-featured-image-preview" id="featured-product-image-preview" hidden>
+            <img id="featured-product-image-preview-img" alt="Vista previa del producto destacado">
+            <button type="button" class="admin-image-remove" id="featured-product-image-clear">Quitar imagen personalizada</button>
+          </div>
+          <button type="button" class="button" id="featured-product-save" disabled>Agregar a lo más vendido</button>
+        </div>
+        <p class="admin-message" id="admin-featured-message" role="status" aria-live="polite"></p>
+        <div class="admin-featured-list" id="admin-featured-list" aria-live="polite"></div>
+      </section>
       <div class="admin-layout">
         <form class="admin-card admin-product-form" id="admin-product-form">
           <h3 id="product-form-title">Agregar artículo</h3>

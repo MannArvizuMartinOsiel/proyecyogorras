@@ -1,5 +1,7 @@
 let products = window.CAPSTREET_PRODUCTS;
 let categoryImages = {};
+let featuredProducts = [];
+let featuredProductsLoadError = false;
 const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 const CHECKOUT_API_URL = isLocalhost
   ? "http://localhost:3001"
@@ -181,6 +183,14 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       };
     }
 
+    function storefrontProducts() {
+      const featuredIds = new Set(featuredProducts.map(featured => Number(featured.product_id)));
+      const featuredIdList = [...featuredIds];
+      return products.filter(product =>
+        window.isStorefrontProductPublished(product, featuredIdList)
+      );
+    }
+
     function renderProducts() {
       const query = document.getElementById("product-search").value.trim().toLocaleLowerCase("es");
       const minPriceInput = document.getElementById("price-min");
@@ -191,7 +201,7 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       const invalidPriceRange = minPrice !== null && maxPrice !== null && minPrice > maxPrice;
       minPriceInput.setAttribute("aria-invalid", String(invalidPriceRange));
       maxPriceInput.setAttribute("aria-invalid", String(invalidPriceRange));
-      let visibleProducts = products.filter(product => {
+      let visibleProducts = storefrontProducts().filter(product => {
         const matchesCategory = !activeFilter || product.department === activeFilter;
         const matchesSize = !selectedSize ||
           (product.department === sizeFilterDepartment && Array.isArray(product.sizeOptions) && product.sizeOptions.includes(selectedSize));
@@ -233,9 +243,10 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
     }
 
     function renderCategoryCatalog() {
+      const availableProducts = storefrontProducts();
       const preferredDepartments = ["Gorras", "Ropa", "Tenis", "Joyería", "Perfumes"];
       const departments = [
-        ...preferredDepartments.filter(department => products.some(product => product.department === department)),
+        ...preferredDepartments.filter(department => availableProducts.some(product => product.department === department)),
         ...new Set(products
           .map(product => product.department)
           .filter(department => department && !preferredDepartments.includes(department)))
@@ -243,7 +254,7 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       const categories = departments
         .map(department => ({
           department,
-          products: products.filter(product => product.department === department)
+          products: availableProducts.filter(product => product.department === department)
         }))
         .filter(category => category.products.length);
       const catalog = document.getElementById("category-catalog");
@@ -279,6 +290,42 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
               <span class="category-tile-description">${escapeHtml(descriptions[department] || "Explora la colección")}</span>
               <span class="category-tile-arrow" aria-hidden="true">↗</span>
             </span>
+          </button>`;
+      }).join("");
+      syncStorefrontAvailability();
+    }
+
+    function renderFeaturedProducts() {
+      const featured = featuredProducts
+        .map(entry => ({
+          ...entry,
+          product: products.find(product => Number(product.id) === Number(entry.product_id))
+        }))
+        .filter(entry => entry.product && storefrontProducts().some(product => product.id === entry.product.id));
+      const section = document.getElementById("bestsellers");
+      section.hidden = false;
+      if (!featured.length) {
+        document.getElementById("bestseller-grid").innerHTML = `
+          <p class="bestseller-empty">${featuredProductsLoadError
+            ? "No pudimos cargar los productos destacados. Intenta de nuevo más tarde."
+            : "Próximamente encontrarás aquí los productos destacados."}</p>`;
+        return;
+      }
+      document.getElementById("bestseller-grid").innerHTML = featured.map(({ product, image_url: featuredImage }) => {
+        const art = productArt({
+          ...product,
+          image_url: featuredImage || product.image_url,
+          color: getVariant(product).color.color,
+          brim: getVariant(product).color.brim
+        });
+        return `
+          <button type="button" class="bestseller-card" data-product-open="${product.id}" aria-label="Ver ${escapeHtml(product.name)}">
+            <span class="bestseller-visual">${art}<span class="bestseller-cta">Ver producto <span aria-hidden="true">↗</span></span></span>
+            <span class="bestseller-info">
+              <span class="bestseller-name">${escapeHtml(product.name)}</span>
+              <span class="bestseller-price">${formatPrice(product.price)}</span>
+            </span>
+            <span class="bestseller-department">${escapeHtml(product.department === "Tenis" ? "Calzado" : product.department)}</span>
           </button>`;
       }).join("");
     }
@@ -330,9 +377,10 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       const product = products.find(item => item.id === activeProductId);
       if (!product) return;
       const variant = getVariant(product);
+      const featuredImage = featuredProducts.find(item => Number(item.product_id) === Number(product.id))?.image_url;
       const content = document.getElementById("product-modal-content");
       content.innerHTML = `
-        <div class="product-modal-visual">${productArt({ ...product, color: variant.color.color, brim: variant.color.brim })}</div>
+        <div class="product-modal-visual">${productArt({ ...product, image_url: featuredImage || product.image_url, color: variant.color.color, brim: variant.color.brim })}</div>
         <div class="product-modal-details">
           <p class="product-modal-kicker">${escapeHtml(product.department)}${product.category ? ` / ${escapeHtml(product.category)}` : ""}</p>
           <h2 id="product-modal-name">${escapeHtml(product.name)}</h2>
@@ -595,6 +643,10 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
         showToast(favorites.has(id) ? "Agregado a tu lista de deseos" : "Eliminado de tu lista de deseos");
       }
     });
+    document.getElementById("bestseller-grid").addEventListener("click", event => {
+      const productButton = event.target.closest("[data-product-open]");
+      if (productButton) openProductModal(Number(productButton.dataset.productOpen), productButton);
+    });
 
     document.getElementById("wishlist-items").addEventListener("click", event => {
       const removeButton = event.target.closest("[data-wishlist-remove]");
@@ -679,14 +731,11 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
     };
 
     function renderSizeOptions() {
-      let sizeCatalog = products.filter(product =>
+      const sizeCatalog = storefrontProducts().filter(product =>
         product.department === sizeFilterDepartment &&
         Array.isArray(product.sizeOptions) &&
         product.sizeOptions.length
       );
-      if (!sizeCatalog.length) {
-        sizeCatalog = window.CAPSTREET_PRODUCTS.filter(product => product.department === sizeFilterDepartment);
-      }
       const options = [...new Set(sizeCatalog
         .filter(product => Array.isArray(product.sizeOptions))
         .flatMap(product => product.sizeOptions))];
@@ -698,6 +747,21 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       });
     }
 
+    function syncStorefrontAvailability() {
+      const available = department => storefrontProducts().some(product => product.department === department);
+      const availableSizeDepartments = ["Ropa", "Tenis"].filter(available);
+      document.querySelectorAll(".nav-store-dropdown [data-department]").forEach(link => {
+        const department = link.dataset.department;
+        link.hidden = ["Ropa", "Tenis"].includes(department) && !available(department);
+      });
+      document.querySelectorAll("[data-size-department]").forEach(button => {
+        button.hidden = !available(button.dataset.sizeDepartment);
+      });
+      document.querySelector(".size-department-picker").hidden = availableSizeDepartments.length === 0;
+      document.getElementById("tallas").hidden = availableSizeDepartments.length === 0;
+      document.getElementById("department-page-picker").hidden = availableSizeDepartments.length < 2;
+    }
+
     function updateSizeFinderDescription() {
       document.getElementById("size-finder-description").textContent =
         "Elige ropa o calzado para ver tallas y productos en su propio apartado.";
@@ -706,6 +770,8 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
     function syncDepartmentMenu() {
       document.querySelectorAll(".nav-store-dropdown [data-department]").forEach(link => {
         const department = link.dataset.department === "all" ? "" : link.dataset.department;
+        link.hidden = ["Ropa", "Tenis"].includes(department) &&
+          !storefrontProducts().some(product => product.department === department);
         if (department === activeFilter) link.setAttribute("aria-current", "page");
         else link.removeAttribute("aria-current");
       });
@@ -808,7 +874,7 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       if (!button) return;
       selectedSize = button.dataset.size;
       activeFilter = sizeFilterDepartment;
-      products.filter(product =>
+      storefrontProducts().filter(product =>
         product.department === sizeFilterDepartment &&
         Array.isArray(product.sizeOptions) &&
         product.sizeOptions.includes(selectedSize)
@@ -1516,6 +1582,21 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       }
     }
 
+    async function loadFeaturedProducts() {
+      try {
+        const response = await fetch(`${CHECKOUT_API_URL}/api/featured-products`);
+        if (!response.ok) throw new Error(`La API respondió HTTP ${response.status}.`);
+        const result = await response.json();
+        if (!Array.isArray(result.products)) {
+          throw new Error("La API devolvió productos destacados no válidos.");
+        }
+        featuredProducts = result.products;
+      } catch (error) {
+        featuredProductsLoadError = true;
+        console.error("No se pudieron cargar los productos destacados.", error);
+      }
+    }
+
     async function loadHeroVideo() {
       try {
         const response = await fetch(`${CHECKOUT_API_URL}/api/hero-video`);
@@ -1552,9 +1633,10 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
     }
 
     (async () => {
-      await Promise.all([loadCatalog(), loadHeroVideo(), loadCategoryImages()]);
+      await Promise.all([loadCatalog(), loadHeroVideo(), loadCategoryImages(), loadFeaturedProducts()]);
       renderSizeOptions();
       renderCategoryCatalog();
+      renderFeaturedProducts();
       cart = loadSavedCart();
       favorites = loadSavedWishlist();
       renderProducts();

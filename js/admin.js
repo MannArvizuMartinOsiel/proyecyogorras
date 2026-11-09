@@ -34,6 +34,12 @@ let removeExistingImage = false;
 let adminCategoryImageCache = {};
 const pendingCategoryImages = new Map();
 const categoryImagePreviewUrls = new Map();
+let adminFeaturedProducts = [];
+let adminFeaturedCatalog = [];
+let pendingFeaturedImage = null;
+let featuredImagePreviewUrl = null;
+let removeFeaturedImage = false;
+let featuredProductsReadOnly = false;
 
 function showLoginMessage(message) {
   loginMessage.textContent = message;
@@ -232,6 +238,107 @@ function setCategoryImagesReadOnly(readOnly) {
     .forEach(control => { control.disabled = readOnly; });
 }
 
+function renderFeaturedProductOptions() {
+  const select = document.getElementById("featured-product-select");
+  const selectedId = select.value;
+  select.replaceChildren(new Option("Selecciona un producto", ""));
+  adminFeaturedCatalog.forEach(product => {
+    const option = new Option(
+      `${product.department === "Tenis" ? "Calzado" : product.department} · ${product.name}`,
+      String(product.id)
+    );
+    select.add(option);
+  });
+  if (adminFeaturedCatalog.some(product => String(product.id) === selectedId)) select.value = selectedId;
+  updateFeaturedImagePreview();
+}
+
+function updateFeaturedImagePreview() {
+  if (featuredImagePreviewUrl) URL.revokeObjectURL(featuredImagePreviewUrl);
+  featuredImagePreviewUrl = null;
+  const preview = document.getElementById("featured-product-image-preview");
+  const image = document.getElementById("featured-product-image-preview-img");
+  const clearButton = document.getElementById("featured-product-image-clear");
+  const product = adminFeaturedCatalog.find(item =>
+    String(item.id) === document.getElementById("featured-product-select").value
+  );
+  const featured = adminFeaturedProducts.find(item => Number(item.product_id) === Number(product?.id));
+  const imageUrl = pendingFeaturedImage
+    ? URL.createObjectURL(pendingFeaturedImage)
+    : removeFeaturedImage ? product?.image_url : featured?.image_url || product?.image_url;
+  if (pendingFeaturedImage) featuredImagePreviewUrl = imageUrl;
+  image.src = imageUrl || "";
+  preview.hidden = !imageUrl;
+  clearButton.hidden = !product || (!pendingFeaturedImage && !featured?.image_url);
+  document.getElementById("featured-product-save").disabled = !product || featuredProductsReadOnly;
+  document.getElementById("featured-product-save").textContent = featured
+    ? "Guardar cambios destacados"
+    : "Agregar a lo más vendido";
+}
+
+function renderAdminFeaturedProducts() {
+  const container = document.getElementById("admin-featured-list");
+  if (!adminFeaturedProducts.length) {
+    const empty = document.createElement("p");
+    empty.className = "admin-empty";
+    empty.textContent = "Todavía no hay productos destacados.";
+    container.replaceChildren(empty);
+    return;
+  }
+  const list = document.createElement("div");
+  list.className = "admin-featured-rows";
+  adminFeaturedProducts.forEach(entry => {
+    const product = adminFeaturedCatalog.find(item => Number(item.id) === Number(entry.product_id));
+    if (!product) return;
+    const row = document.createElement("article");
+    row.className = "admin-featured-row";
+    const image = document.createElement("img");
+    image.alt = `Imagen de ${product.name}`;
+    image.src = entry.image_url || product.image_url || "";
+    image.hidden = !image.src;
+    const details = document.createElement("div");
+    const title = document.createElement("h4");
+    title.textContent = product.name;
+    const category = document.createElement("p");
+    category.textContent = `${product.department === "Tenis" ? "Calzado" : product.department} · ${new Intl.NumberFormat("es-MX", {
+      style: "currency",
+      currency: "MXN",
+      maximumFractionDigits: 0
+    }).format(product.price)}`;
+    const actions = document.createElement("div");
+    actions.className = "admin-product-row-actions";
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.dataset.editFeaturedProduct = product.id;
+    edit.textContent = "Cambiar producto o imagen";
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "admin-delete-product";
+    remove.dataset.removeFeaturedProduct = product.id;
+    remove.textContent = "Quitar de la sección";
+    actions.append(edit, remove);
+    details.append(title, category, actions);
+    row.append(image, details);
+    list.append(row);
+  });
+  container.replaceChildren(list);
+}
+
+async function loadAdminFeaturedProducts(session) {
+  const result = await adminRequest("/api/admin/featured-products", session);
+  adminFeaturedCatalog = result.catalog;
+  adminFeaturedProducts = result.products;
+  renderFeaturedProductOptions();
+  renderAdminFeaturedProducts();
+}
+
+function setFeaturedProductsReadOnly(readOnly) {
+  featuredProductsReadOnly = readOnly;
+  document.querySelectorAll(
+    "#featured-product-select, #featured-product-image, #featured-product-image-clear, #featured-product-save, #admin-featured-list button"
+  ).forEach(control => { control.disabled = readOnly; });
+}
+
 async function showDashboard(session) {
   document.getElementById("admin-session-email").textContent = session.user.email;
   loginSection.hidden = true;
@@ -252,6 +359,13 @@ async function showDashboard(session) {
       document.getElementById("admin-category-images-message").textContent =
         `No se pudieron cargar las imágenes por categoría: ${error.message}`;
     }
+    try {
+      await loadAdminFeaturedProducts(session);
+      setFeaturedProductsReadOnly(document.getElementById("product-save-button").disabled);
+    } catch (error) {
+      document.getElementById("admin-featured-message").textContent =
+        `No se pudieron cargar los productos destacados: ${error.message}`;
+    }
   } catch (error) {
     if (error.status === 401 || error.status === 403) {
       dashboard.hidden = true;
@@ -266,6 +380,11 @@ async function showDashboard(session) {
       adminCategoryImageCache = {};
       renderCategoryImages();
       setCategoryImagesReadOnly(true);
+      adminFeaturedCatalog = bundledProducts;
+      adminFeaturedProducts = [];
+      renderFeaturedProductOptions();
+      renderAdminFeaturedProducts();
+      setFeaturedProductsReadOnly(true);
     }
     message.textContent = `El servidor no pudo cargar el catálogo: ${error.message}. Se muestran los productos originales en modo de solo lectura. Verifica la conexión de Supabase y vuelve a cargar el panel.`;
   }
@@ -516,6 +635,119 @@ document.getElementById("admin-category-image-list").addEventListener("click", a
     if (button.isConnected) setBusy(button, false);
   }
 });
+
+document.getElementById("featured-product-select").addEventListener("change", () => {
+  const input = document.getElementById("featured-product-image");
+  input.value = "";
+  pendingFeaturedImage = null;
+  removeFeaturedImage = false;
+  updateFeaturedImagePreview();
+});
+
+document.getElementById("featured-product-image").addEventListener("change", event => {
+  const file = event.currentTarget.files[0];
+  if (!file) return;
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 4 * 1024 * 1024) {
+    event.currentTarget.value = "";
+    pendingFeaturedImage = null;
+    document.getElementById("admin-featured-message").textContent =
+      "Elige una imagen JPG, PNG o WebP de máximo 4 MB.";
+    updateFeaturedImagePreview();
+    return;
+  }
+  pendingFeaturedImage = file;
+  removeFeaturedImage = false;
+  document.getElementById("admin-featured-message").textContent = "";
+  updateFeaturedImagePreview();
+});
+
+document.getElementById("featured-product-image-clear").addEventListener("click", () => {
+  const productId = Number(document.getElementById("featured-product-select").value);
+  const featured = adminFeaturedProducts.find(item => Number(item.product_id) === productId);
+  document.getElementById("featured-product-image").value = "";
+  pendingFeaturedImage = null;
+  removeFeaturedImage = Boolean(featured?.image_url);
+  updateFeaturedImagePreview();
+  document.getElementById("admin-featured-message").textContent = removeFeaturedImage
+    ? "Se quitará la imagen personalizada al guardar."
+    : "";
+});
+
+document.getElementById("featured-product-save").addEventListener("click", async event => {
+  const button = event.currentTarget;
+  const message = document.getElementById("admin-featured-message");
+  const productId = Number(document.getElementById("featured-product-select").value);
+  if (!productId) return;
+  setBusy(button, true, "Guardando...");
+  message.textContent = "";
+  try {
+    const { data, error } = await adminSupabase.auth.getSession();
+    if (error) throw error;
+    if (!data.session) throw new Error("Tu sesión terminó. Inicia sesión de nuevo.");
+    const body = {
+      removeImage: removeFeaturedImage,
+      ...(pendingFeaturedImage ? { imageData: await imageFileToDataUrl(pendingFeaturedImage) } : {})
+    };
+    await adminRequest(`/api/admin/featured-products/${encodeURIComponent(productId)}`, data.session, {
+      method: "PUT",
+      body: JSON.stringify(body)
+    });
+    pendingFeaturedImage = null;
+    removeFeaturedImage = false;
+    document.getElementById("featured-product-image").value = "";
+    await loadAdminFeaturedProducts(data.session);
+    message.textContent = "El producto se actualizó en la sección Lo más vendido.";
+  } catch (error) {
+    message.textContent = error.message || "No se pudo guardar el producto destacado.";
+  } finally {
+    if (button.isConnected) setBusy(button, false);
+    updateFeaturedImagePreview();
+  }
+});
+
+document.getElementById("admin-featured-list").addEventListener("click", async event => {
+  const editButton = event.target.closest("[data-edit-featured-product]");
+  if (editButton) {
+    document.getElementById("featured-product-select").value = editButton.dataset.editFeaturedProduct;
+    document.getElementById("featured-product-image").value = "";
+    pendingFeaturedImage = null;
+    removeFeaturedImage = false;
+    updateFeaturedImagePreview();
+    document.getElementById("admin-featured-message").textContent = "";
+    document.getElementById("featured-product-select").focus();
+    return;
+  }
+  const removeButton = event.target.closest("[data-remove-featured-product]");
+  if (!removeButton) return;
+  const productId = Number(removeButton.dataset.removeFeaturedProduct);
+  const product = adminFeaturedCatalog.find(item => Number(item.id) === productId);
+  if (!product || !window.confirm(`¿Quitar "${product.name}" de Lo más vendido?`)) return;
+  setBusy(removeButton, true, "Quitando...");
+  const message = document.getElementById("admin-featured-message");
+  message.textContent = "";
+  try {
+    const { data, error } = await adminSupabase.auth.getSession();
+    if (error) throw error;
+    if (!data.session) throw new Error("Tu sesión terminó. Inicia sesión de nuevo.");
+    await adminRequest(`/api/admin/featured-products/${encodeURIComponent(productId)}`, data.session, {
+      method: "DELETE"
+    });
+    adminFeaturedProducts = adminFeaturedProducts.filter(item => Number(item.product_id) !== productId);
+    renderAdminFeaturedProducts();
+    if (Number(document.getElementById("featured-product-select").value) === productId) {
+      document.getElementById("featured-product-select").value = "";
+      pendingFeaturedImage = null;
+      removeFeaturedImage = false;
+      updateFeaturedImagePreview();
+    }
+    message.textContent = `${product.name} se quitó de Lo más vendido.`;
+  } catch (error) {
+    message.textContent = error.message || "No se pudo quitar el producto destacado.";
+  } finally {
+    setBusy(removeButton, false);
+  }
+});
+
 document.getElementById("product-image-remove").addEventListener("click", () => {
   if (productImageInput.files.length) {
     productImageInput.value = "";

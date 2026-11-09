@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const products = require("../js/products.js");
+const isStorefrontProductPublished = require("../js/storefront-catalog.js");
 
 test("the shared catalog has unique products with valid prices and departments", () => {
   const ids = products.map(product => product.id);
@@ -29,4 +30,15 @@ test("clothing and sneakers provide wearable sizes while other products are one 
       assert.deepEqual(product.sizeOptions, ["Unitalla"]);
     }
   }
+});
+
+test("clothing and footwear stay hidden until an admin product is added or published with an image", () => {
+  for (const product of products.filter(item => ["Ropa", "Tenis"].includes(item.department))) {
+    assert.equal(isStorefrontProductPublished(product), false);
+  }
+
+  assert.equal(isStorefrontProductPublished({ id: 1000, department: "Ropa" }), true);
+  assert.equal(isStorefrontProductPublished({ id: 17, department: "Tenis", image_url: "https://example.com/shoe.jpg" }), true);
+  assert.equal(isStorefrontProductPublished({ id: 9, department: "Ropa" }, [9]), true);
+  assert.equal(isStorefrontProductPublished({ id: 1, department: "Gorras" }), true);
 });
