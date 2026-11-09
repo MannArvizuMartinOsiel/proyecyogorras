@@ -4,18 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#f5f4f0">
-  <title>Administrar catálogo — CAPSTREET</title>
+  <title>Administrar catálogo — VELKAP</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/admin.css">
 </head>
 <body class="admin-page">
   <header class="admin-header">
-    <a class="brand" href="index.html"><span class="brand-mark">C</span> CAPSTREET</a>
+    <a class="brand" href="index.html">
+      <span class="brand-word">VELKAP</span>
+    </a>
     <a class="admin-back" href="index.html">Volver a la tienda</a>
   </header>
   <main class="admin-main">
     <section class="admin-intro">
-      <p class="eyebrow">CAPSTREET / Administración</p>
+      <p class="eyebrow">VELKAP / Administración</p>
       <h1>Tu catálogo,<br><em>bajo control.</em></h1>
       <p>Agrega, edita o quita artículos. Los cambios se reflejan en la tienda y en el checkout.</p>
     </section>
@@ -44,6 +46,18 @@
         </div>
         <button class="admin-logout" id="admin-logout" type="button">Cerrar sesión</button>
       </div>
+      <section class="admin-card admin-hero-video" aria-labelledby="admin-hero-video-title">
+        <h3 id="admin-hero-video-title">Video ilustrativo de portada</h3>
+        <p>Este video aparecerá en el espacio grande de la gorra en la página principal. Usa MP4 o WebM, máximo 20 MB.</p>
+        <video id="admin-hero-video-preview" controls muted playsinline hidden></video>
+        <label for="admin-hero-video-file">Seleccionar video</label>
+        <input id="admin-hero-video-file" type="file" accept="video/mp4,video/webm">
+        <div class="admin-hero-video-actions">
+          <button class="button" id="admin-hero-video-save" type="button" disabled>Guardar video</button>
+          <button class="admin-cancel-edit" id="admin-hero-video-remove" type="button" disabled>Quitar video de portada</button>
+        </div>
+        <p class="admin-message" id="admin-hero-video-message" role="status" aria-live="polite"></p>
+      </section>
       <div class="admin-layout">
         <form class="admin-card admin-product-form" id="admin-product-form">
           <h3 id="product-form-title">Agregar artículo</h3>

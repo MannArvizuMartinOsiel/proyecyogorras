@@ -923,7 +923,7 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       try {
         if (accountMode === "register") {
           if (window.location.protocol === "file:") {
-            showAccountMessage("Para verificar el correo necesitas abrir CAPSTREET desde http://localhost o desde tu dominio publicado, y permitir esa URL en Supabase.");
+            showAccountMessage("Para verificar el correo necesitas abrir VELKAP desde http://localhost o desde tu dominio publicado, y permitir esa URL en Supabase.");
             return;
           }
           const fullName = document.getElementById("account-name").value.trim();
@@ -1149,7 +1149,7 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       if (paypalState === "success") {
         const paypalOrderId = url.searchParams.get("token");
         if (!paypalOrderId || !supabaseClient) {
-          showToast("No pudimos identificar tu pago de PayPal. Contacta a CAPSTREET antes de volver a pagar.");
+          showToast("No pudimos identificar tu pago de PayPal. Contacta a VELKAP antes de volver a pagar.");
           return;
         }
         try {
@@ -1295,8 +1295,40 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       }
     }
 
+    async function loadHeroVideo() {
+      try {
+        const response = await fetch(`${CHECKOUT_API_URL}/api/hero-video`);
+        if (!response.ok) throw new Error(`La API respondió HTTP ${response.status}.`);
+        const result = await response.json();
+        if (!result.videoUrl) return;
+
+        const videoUrl = new URL(result.videoUrl);
+        if (!["http:", "https:"].includes(videoUrl.protocol)) {
+          throw new Error("La API devolvió una URL de video no válida.");
+        }
+
+        const video = document.getElementById("hero-video");
+        const illustration = document.querySelector(".hero-cap");
+        video.addEventListener("error", () => {
+          console.error("No se pudo reproducir el video de portada.");
+          video.hidden = true;
+          video.removeAttribute("src");
+          illustration.hidden = false;
+        }, { once: true });
+        video.src = videoUrl.href;
+        video.hidden = false;
+        illustration.hidden = true;
+        video.play().catch(error => {
+          console.warn("La reproducción automática del video de portada no está disponible.", error);
+          video.controls = true;
+        });
+      } catch (error) {
+        console.error("No se pudo cargar el video de portada; se mantiene la ilustración.", error);
+      }
+    }
+
     (async () => {
-      await loadCatalog();
+      await Promise.all([loadCatalog(), loadHeroVideo()]);
       cart = loadSavedCart();
       favorites = loadSavedWishlist();
       renderProducts();

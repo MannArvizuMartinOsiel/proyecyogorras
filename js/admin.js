@@ -183,6 +183,12 @@ async function showDashboard(session) {
     }
     message.textContent = `El servidor no pudo cargar el catálogo: ${error.message}. Se muestran los productos originales en modo de solo lectura. Verifica la conexión de Supabase y vuelve a cargar el panel.`;
   }
+  try {
+    await loadAdminHeroVideo(session);
+  } catch (error) {
+    document.getElementById("admin-hero-video-message").textContent =
+      `No se pudo cargar el video de portada: ${error.message}`;
+  }
 }
 
 function showImagePreview(source) {
@@ -192,6 +198,40 @@ function showImagePreview(source) {
   }
   productImagePreviewImg.src = source;
   productImagePreview.hidden = false;
+}
+
+const adminHeroVideoInput = document.getElementById("admin-hero-video-file");
+const adminHeroVideoPreview = document.getElementById("admin-hero-video-preview");
+const adminHeroVideoSaveButton = document.getElementById("admin-hero-video-save");
+const adminHeroVideoRemoveButton = document.getElementById("admin-hero-video-remove");
+let currentHeroVideoUrl = null;
+let adminHeroVideoPreviewUrl = null;
+
+function showAdminHeroVideoPreview(source, isTemporary = false) {
+  if (adminHeroVideoPreviewUrl) {
+    URL.revokeObjectURL(adminHeroVideoPreviewUrl);
+    adminHeroVideoPreviewUrl = null;
+  }
+  adminHeroVideoPreview.pause();
+  if (source) {
+    adminHeroVideoPreview.src = source;
+    adminHeroVideoPreview.hidden = false;
+    if (isTemporary) adminHeroVideoPreviewUrl = source;
+    adminHeroVideoPreview.load();
+  } else {
+    adminHeroVideoPreview.removeAttribute("src");
+    adminHeroVideoPreview.hidden = true;
+    adminHeroVideoPreview.load();
+  }
+  adminHeroVideoRemoveButton.disabled = !currentHeroVideoUrl;
+}
+
+async function loadAdminHeroVideo(session) {
+  const result = await adminRequest("/api/hero-video", session);
+  currentHeroVideoUrl = result.videoUrl || null;
+  adminHeroVideoInput.value = "";
+  adminHeroVideoSaveButton.disabled = true;
+  showAdminHeroVideoPreview(currentHeroVideoUrl);
 }
 
 function resetProductForm() {
@@ -297,6 +337,74 @@ document.getElementById("product-image-remove").addEventListener("click", () => 
     return;
   }
   clearProductImage();
+});
+
+adminHeroVideoInput.addEventListener("change", () => {
+  const file = adminHeroVideoInput.files[0];
+  if (!file) {
+    showAdminHeroVideoPreview(currentHeroVideoUrl);
+    return;
+  }
+  if (!["video/mp4", "video/webm"].includes(file.type) || file.size > 20 * 1024 * 1024) {
+    adminHeroVideoInput.value = "";
+    showAdminHeroVideoPreview(currentHeroVideoUrl);
+    document.getElementById("admin-hero-video-message").textContent =
+      "Selecciona un video MP4 o WebM de máximo 20 MB.";
+    return;
+  }
+  showAdminHeroVideoPreview(URL.createObjectURL(file), true);
+  adminHeroVideoSaveButton.disabled = false;
+  document.getElementById("admin-hero-video-message").textContent = "";
+});
+
+adminHeroVideoSaveButton.addEventListener("click", async () => {
+  const file = adminHeroVideoInput.files[0];
+  const message = document.getElementById("admin-hero-video-message");
+  if (!file) return;
+  setBusy(adminHeroVideoSaveButton, true, "Subiendo video...");
+  message.textContent = "";
+  try {
+    const { data, error } = await adminSupabase.auth.getSession();
+    if (error) throw error;
+    if (!data.session) throw new Error("Tu sesión terminó. Inicia sesión de nuevo.");
+    const result = await adminRequest("/api/admin/hero-video", data.session, {
+      method: "PUT",
+      headers: { "Content-Type": file.type },
+      body: file
+    });
+    currentHeroVideoUrl = result.videoUrl;
+    adminHeroVideoInput.value = "";
+    showAdminHeroVideoPreview(currentHeroVideoUrl);
+    message.textContent = result.warning || "El video de portada se actualizó correctamente.";
+  } catch (error) {
+    message.textContent = error.message || "No pudimos guardar el video de portada.";
+  } finally {
+    setBusy(adminHeroVideoSaveButton, false);
+    adminHeroVideoSaveButton.disabled = !adminHeroVideoInput.files.length;
+  }
+});
+
+adminHeroVideoRemoveButton.addEventListener("click", async () => {
+  if (!currentHeroVideoUrl || !window.confirm("¿Quitar el video? La portada volverá a mostrar la ilustración de la gorra.")) return;
+  const message = document.getElementById("admin-hero-video-message");
+  setBusy(adminHeroVideoRemoveButton, true, "Quitando video...");
+  message.textContent = "";
+  try {
+    const { data, error } = await adminSupabase.auth.getSession();
+    if (error) throw error;
+    if (!data.session) throw new Error("Tu sesión terminó. Inicia sesión de nuevo.");
+    const result = await adminRequest("/api/admin/hero-video", data.session, { method: "DELETE" });
+    currentHeroVideoUrl = null;
+    adminHeroVideoInput.value = "";
+    adminHeroVideoSaveButton.disabled = true;
+    showAdminHeroVideoPreview(null);
+    message.textContent = result.warning || "Se quitó el video. La portada volverá a mostrar la ilustración.";
+  } catch (error) {
+    message.textContent = error.message || "No pudimos quitar el video de portada.";
+  } finally {
+    setBusy(adminHeroVideoRemoveButton, false);
+    adminHeroVideoRemoveButton.disabled = !currentHeroVideoUrl;
+  }
 });
 
 document.getElementById("admin-password-toggle").addEventListener("click", event => {

@@ -21,6 +21,7 @@ Stripe aloja la captura de datos de tarjeta; PayPal redirige a su propio sitio. 
 - Si Supabase no puede cargar el catálogo, el panel muestra los productos iniciales como solo lectura y explica el error; editar, quitar y agregar requieren que `admin_products` exista y que Render esté ejecutando la versión actual del backend.
 - Al agregar o editar artículos se puede subir, reemplazar o quitar una imagen JPG, PNG o WebP de hasta 4 MB. Se guarda en el bucket público `product-images` de Supabase Storage y aparece en la tienda. Los artículos sin imagen conservan la ilustración predeterminada.
 - Si la imagen no puede subirse por un error de Storage, guardar el artículo o los demás cambios continúa sin la nueva imagen y el panel avisa del problema.
+- El panel también permite subir, reemplazar o quitar el video ilustrativo de la portada (MP4 o WebM, máximo 20 MB). Se guarda en el bucket público `hero-videos`; al quitarlo, la portada vuelve a mostrar la ilustración de la gorra. Ejecuta `supabase-schema.sql` para crear el bucket y la tabla `site_media`.
 
 ## Variables de entorno de Render
 

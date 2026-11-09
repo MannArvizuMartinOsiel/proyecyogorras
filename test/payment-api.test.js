@@ -111,6 +111,21 @@ test("the API remains available and disables checkout when payment credentials a
   assert.equal(catalogResult.products[0].name, "La Clásica");
   assert.equal(catalogResult.source, "bundled");
 
+  const heroVideo = await fetch(`http://127.0.0.1:${port}/api/hero-video`);
+  assert.equal(heroVideo.status, 200);
+  assert.deepEqual(await heroVideo.json(), { videoUrl: null });
+
+  const unavailableHeroVideoUpload = await fetch(`http://127.0.0.1:${port}/api/admin/hero-video`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "video/mp4",
+      Authorization: "Bearer test-token"
+    },
+    body: Buffer.from("video")
+  });
+  assert.equal(unavailableHeroVideoUpload.status, 503);
+  assert.match((await unavailableHeroVideoUpload.json()).error, /panel de administración no está configurado/i);
+
   const unavailableAdmin = await fetch(`http://127.0.0.1:${port}/api/admin/products`);
   assert.equal(unavailableAdmin.status, 503);
 

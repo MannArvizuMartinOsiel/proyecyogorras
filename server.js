@@ -16,6 +16,19 @@ const PRODUCT_TYPES = {
 };
 const PRODUCT_IMAGE_BUCKET = "product-images";
 const MAX_PRODUCT_IMAGE_BYTES = 4 * 1024 * 1024;
+const HERO_VIDEO_BUCKET = "hero-videos";
+const MAX_HERO_VIDEO_BYTES = 20 * 1024 * 1024;
+const HERO_VIDEO_TYPES = new Map([
+  ["video/mp4", {
+    extension: "mp4",
+    signature: bytes => bytes.length >= 12 && bytes.toString("ascii", 4, 8) === "ftyp"
+  }],
+  ["video/webm", {
+    extension: "webm",
+    signature: bytes => bytes.length >= 4 &&
+      bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))
+  }]
+]);
 const PRODUCT_IMAGE_TYPES = new Map([
   ["image/jpeg", { extension: "jpg", signature: bytes => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff }],
   ["image/png", { extension: "png", signature: bytes => bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) }],
@@ -388,6 +401,61 @@ async function removeProductImage(imageUrl) {
   if (error) console.error("Could not remove product image from Supabase Storage.", error);
 }
 
+async function getHeroVideo() {
+  if (!adminClient) return null;
+  const { data, error } = await adminClient.from("site_media")
+    .select("video_url,video_path")
+    .eq("id", "hero")
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function uploadHeroVideo(videoBuffer, contentType) {
+  const videoType = HERO_VIDEO_TYPES.get(contentType);
+  if (
+    !Buffer.isBuffer(videoBuffer) ||
+    videoBuffer.length === 0 ||
+    videoBuffer.length > MAX_HERO_VIDEO_BYTES ||
+    !videoType ||
+    !videoType.signature(videoBuffer)
+  ) {
+    throw requestError("El video debe ser MP4 o WebM válido y no superar 20 MB.");
+  }
+
+  const path = `homepage/${crypto.randomUUID()}.${videoType.extension}`;
+  const { error } = await adminClient.storage.from(HERO_VIDEO_BUCKET).upload(path, videoBuffer, {
+    contentType,
+    cacheControl: "31536000",
+    upsert: false
+  });
+  if (error) {
+    console.error("Could not upload homepage hero video.", {
+      bucket: HERO_VIDEO_BUCKET,
+      statusCode: error.statusCode || error.status,
+      message: error.message
+    });
+    const statusCode = Number(error.statusCode || error.status);
+    if (statusCode === 404 || /bucket not found/i.test(error.message || "")) {
+      throw requestError("No existe el bucket hero-videos. Ejecuta supabase-schema.sql en Supabase.", 503);
+    }
+    if (statusCode === 413) {
+      throw requestError("El video supera el límite permitido por el bucket hero-videos.", 413);
+    }
+    throw requestError("No se pudo subir el video a Supabase Storage. Revisa la configuración y los registros de Render.", 503);
+  }
+  return {
+    path,
+    url: adminClient.storage.from(HERO_VIDEO_BUCKET).getPublicUrl(path).data.publicUrl
+  };
+}
+
+async function removeHeroVideoFile(path) {
+  if (!adminClient || typeof path !== "string" || !path.startsWith("homepage/") || path.includes("..")) return;
+  const { error } = await adminClient.storage.from(HERO_VIDEO_BUCKET).remove([path]);
+  if (error) throw error;
+}
+
 function catalogRow(product, isDeleted = false) {
   return {
     id: product.id,
@@ -566,6 +634,100 @@ app.get("/api/payment-options", (_req, res) => {
     },
     stripePublishableKey: stripePublishableKey || null
   });
+});
+
+app.get("/api/hero-video", async (_req, res) => {
+  try {
+    const media = await getHeroVideo();
+    return res.json({ videoUrl: media?.video_url || null });
+  } catch (error) {
+    console.error("Could not load homepage hero video.", error);
+    return res.status(503).json({
+      error: "No se pudo cargar el video de portada. Verifica que supabase-schema.sql esté actualizado."
+    });
+  }
+});
+
+app.put(
+  "/api/admin/hero-video",
+  express.raw({ type: ["video/mp4", "video/webm"], limit: MAX_HERO_VIDEO_BYTES }),
+  async (req, res) => {
+    let uploadedVideoPath = null;
+    try {
+      if (!await getAdminUser(req, res)) return;
+      const currentMedia = await getHeroVideo();
+      const contentType = (req.get("content-type") || "").split(";")[0].toLowerCase();
+      const uploaded = await uploadHeroVideo(req.body, contentType);
+      uploadedVideoPath = uploaded.path;
+      const { error } = await adminClient.from("site_media").upsert({
+        id: "hero",
+        video_url: uploaded.url,
+        video_path: uploaded.path,
+        updated_at: new Date().toISOString()
+      });
+      if (error) throw error;
+
+      uploadedVideoPath = null;
+      let warning;
+      if (currentMedia?.video_path) {
+        try {
+          await removeHeroVideoFile(currentMedia.video_path);
+        } catch (error) {
+          console.error("Could not remove replaced homepage hero video.", error);
+          warning = "El nuevo video se guardó, pero no se pudo borrar el archivo anterior.";
+        }
+      }
+      return res.json({ videoUrl: uploaded.url, ...(warning ? { warning } : {}) });
+    } catch (error) {
+      console.error("Could not save homepage hero video.", error);
+      if (uploadedVideoPath && adminClient) {
+        try {
+          await removeHeroVideoFile(uploadedVideoPath);
+        } catch (cleanupError) {
+          console.error("Could not remove orphaned homepage hero video.", cleanupError);
+        }
+      }
+      if (error.code === "42P01" || error.code === "PGRST205" || /site_media/i.test(error.message || "")) {
+        return res.status(503).json({
+          error: "Falta actualizar Supabase. Ejecuta el archivo supabase-schema.sql y vuelve a intentar."
+        });
+      }
+      return res.status(error.status || 503).json({
+        error: error.message || "No pudimos guardar el video de portada."
+      });
+    }
+  }
+);
+
+app.delete("/api/admin/hero-video", async (req, res) => {
+  try {
+    if (!await getAdminUser(req, res)) return;
+    const currentMedia = await getHeroVideo();
+    if (!currentMedia) return res.json({ videoUrl: null });
+    const { error } = await adminClient.from("site_media").delete().eq("id", "hero");
+    if (error) throw error;
+
+    let warning;
+    if (currentMedia.video_path) {
+      try {
+        await removeHeroVideoFile(currentMedia.video_path);
+      } catch (error) {
+        console.error("Could not remove deleted homepage hero video.", error);
+        warning = "El video se quitó de la portada, pero no se pudo borrar su archivo anterior.";
+      }
+    }
+    return res.json({ videoUrl: null, ...(warning ? { warning } : {}) });
+  } catch (error) {
+    console.error("Could not remove homepage hero video.", error);
+    if (error.code === "42P01" || error.code === "PGRST205" || /site_media/i.test(error.message || "")) {
+      return res.status(503).json({
+        error: "Falta actualizar Supabase. Ejecuta el archivo supabase-schema.sql y vuelve a intentar."
+      });
+    }
+    return res.status(error.status || 503).json({
+      error: error.message || "No pudimos quitar el video de portada."
+    });
+  }
 });
 
 app.get("/api/products", async (_req, res) => {
@@ -1121,6 +1283,13 @@ app.post("/api/paypal-webhook", async (req, res) => {
     console.error("Could not process PayPal webhook.", error);
     return res.status(500).json({ error: "Could not process PayPal webhook." });
   }
+});
+
+app.use((error, _req, res, next) => {
+  if (error.type === "entity.too.large") {
+    return res.status(413).json({ error: "El archivo supera el límite permitido de 20 MB." });
+  }
+  return next(error);
 });
 
 app.use((_req, res) => {

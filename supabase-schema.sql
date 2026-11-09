@@ -202,3 +202,33 @@ create policy "Public can view CAPSTREET product images"
   on storage.objects for select
   to public
   using (bucket_id = 'product-images');
+
+create table if not exists public.site_media (
+  id text primary key check (id = 'hero'),
+  video_url text not null,
+  video_path text not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.site_media enable row level security;
+revoke all on public.site_media from anon, authenticated;
+grant select, insert, update, delete on public.site_media to service_role;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'hero-videos',
+  'hero-videos',
+  true,
+  20971520,
+  array['video/mp4', 'video/webm']
+)
+on conflict (id) do update
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "Public can view VELKAP homepage videos" on storage.objects;
+create policy "Public can view VELKAP homepage videos"
+  on storage.objects for select
+  to public
+  using (bucket_id = 'hero-videos');
