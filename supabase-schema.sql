@@ -214,6 +214,17 @@ alter table public.site_media enable row level security;
 revoke all on public.site_media from anon, authenticated;
 grant select, insert, update, delete on public.site_media to service_role;
 
+create table if not exists public.admin_category_images (
+  department text primary key check (department in ('Gorras', 'Ropa', 'Perfumes', 'Joyería', 'Tenis')),
+  image_url text not null,
+  image_path text not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.admin_category_images enable row level security;
+revoke all on public.admin_category_images from anon, authenticated;
+grant select, insert, update, delete on public.admin_category_images to service_role;
+
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'hero-videos',

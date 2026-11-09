@@ -14,7 +14,17 @@
         <span class="brand-word">VELKAP</span>
       </a>
       <div class="nav-links">
-        <a href="#coleccion">Colección</a>
+        <details class="nav-store-menu">
+          <summary>Tienda</summary>
+          <div class="nav-store-dropdown">
+            <p>Explora por categoría</p>
+            <a href="#coleccion" data-department="all">Todo el catálogo <span>00</span></a>
+            <a href="#coleccion" data-department="Gorras">Gorras <span>01</span></a>
+            <a href="#coleccion" data-department="Ropa">Ropa <span>02</span></a>
+            <a href="#coleccion" data-department="Joyería">Joyería <span>03</span></a>
+            <a href="#coleccion" data-department="Tenis">Calzado <span>04</span></a>
+          </div>
+        </details>
         <a href="#footer">Contacto</a>
       </div>
       <div class="nav-actions">
@@ -38,7 +48,7 @@
   </header>
 
   <main>
-    <section class="hero">
+    <section class="hero home-view">
       <div class="hero-copy">
         <p class="eyebrow">Accesorios sin ruido</p>
         <h1>Tu estilo.<br><em>Tu calle.</em></h1>
@@ -66,22 +76,51 @@
       </div>
     </section>
 
-    <section class="collection" id="coleccion">
+    <section class="collection home-view" id="coleccion">
       <div class="section-heading">
         <div>
-          <p class="eyebrow">Piezas para todos los días</p>
-          <h2 id="collection-title">Gorras</h2>
+          <p class="eyebrow">Descubre VELKAP</p>
+          <h2 id="collection-title">Tienda</h2>
         </div>
-        <p id="collection-description">Diseños esenciales para completar tu estilo.</p>
+        <p id="collection-description">Explora nuestra colección y encuentra lo que va contigo.</p>
+      </div>
+      <div class="category-catalog" id="category-catalog" aria-label="Catálogo por categoría"></div>
+    </section>
+
+    <section class="shoe-finder home-view" id="tallas" aria-labelledby="shoe-finder-title">
+      <div class="shoe-finder-copy">
+        <h2 id="shoe-finder-title">¿Qué<br>talla<br>buscas?</h2>
+        <p id="size-finder-description">Elige ropa o calzado para ver tallas y productos en su propio apartado.</p>
+      </div>
+      <div class="size-finder-controls">
+        <div class="size-department-picker" role="group" aria-label="Tipo de producto">
+          <button type="button" class="size-department-button" data-size-department="Tenis" aria-pressed="false">Explorar calzado</button>
+          <button type="button" class="size-department-button" data-size-department="Ropa" aria-pressed="false">Explorar ropa</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="department-page" id="department-page" aria-labelledby="department-page-title" hidden>
+      <button type="button" class="department-back" id="department-back">
+        <span aria-hidden="true">←</span> Volver a la tienda
+      </button>
+      <div class="section-heading department-page-heading">
+        <div>
+          <p class="eyebrow">Colección VELKAP</p>
+          <h1 id="department-page-title">Tienda</h1>
+        </div>
+        <p id="department-page-description">Explora nuestra colección y encuentra lo que va contigo.</p>
+      </div>
+      <div class="department-size-tools" id="department-size-tools" hidden>
+        <div class="department-page-picker" id="department-page-picker" role="group" aria-label="Tipo de producto">
+          <button type="button" class="department-page-button" data-size-department="Tenis" aria-pressed="false">Calzado</button>
+          <button type="button" class="department-page-button" data-size-department="Ropa" aria-pressed="false">Ropa</button>
+        </div>
+        <p class="department-size-label">Selecciona tu talla</p>
+        <div class="shoe-size-picker" id="size-options" role="group" aria-label="Tallas disponibles"></div>
+        <button type="button" class="shoe-size-clear" id="clear-size-filter" hidden>Ver todos</button>
       </div>
       <div class="shop-controls">
-        <div class="filters" role="group" aria-label="Apartados de la tienda">
-          <button class="filter-button active" data-department="Gorras" aria-pressed="true">Gorras</button>
-          <button class="filter-button" data-department="Ropa" aria-pressed="false">Ropa</button>
-          <button class="filter-button" data-department="Perfumes" aria-pressed="false">Perfumes</button>
-          <button class="filter-button" data-department="Joyería" aria-pressed="false">Joyería</button>
-          <button class="filter-button" data-department="Tenis" aria-pressed="false">Tenis</button>
-        </div>
         <div class="shop-tools" id="shop-tools" aria-label="Buscar y filtrar productos" hidden>
           <label class="search-wrap">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg>
@@ -113,7 +152,6 @@
       </div>
       <div class="products-grid" id="products-grid" aria-live="polite"></div>
     </section>
-
   </main>
 
   <section class="benefits" aria-label="Beneficios">

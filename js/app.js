@@ -1,4 +1,5 @@
 let products = window.CAPSTREET_PRODUCTS;
+let categoryImages = {};
 const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 const CHECKOUT_API_URL = isLocalhost
   ? "http://localhost:3001"
@@ -94,7 +95,9 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
         }
       })
       : null;
-    let activeFilter = "Gorras";
+    let activeFilter = "";
+    let sizeFilterDepartment = "Tenis";
+    let selectedSize = null;
     let toastTimer;
     let accountEmail = "";
     let accountProfile = null;
@@ -189,11 +192,13 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       minPriceInput.setAttribute("aria-invalid", String(invalidPriceRange));
       maxPriceInput.setAttribute("aria-invalid", String(invalidPriceRange));
       let visibleProducts = products.filter(product => {
-        const matchesCategory = product.department === activeFilter;
+        const matchesCategory = !activeFilter || product.department === activeFilter;
+        const matchesSize = !selectedSize ||
+          (product.department === sizeFilterDepartment && Array.isArray(product.sizeOptions) && product.sizeOptions.includes(selectedSize));
         const matchesQuery = `${product.name} ${product.department} ${product.category || ""} ${product.description}`.toLocaleLowerCase("es").includes(query);
         const matchesPrice = (minPrice === null || product.price >= minPrice) &&
           (maxPrice === null || product.price <= maxPrice);
-        return matchesCategory && matchesQuery && matchesPrice;
+        return matchesCategory && matchesSize && matchesQuery && matchesPrice;
       });
       if (invalidPriceRange) visibleProducts = [];
       if (sortOrder === "price-asc") visibleProducts.sort((a, b) => a.price - b.price);
@@ -224,6 +229,57 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
             <p class="product-description">${escapeHtml(product.description)}</p>
           </div>
         </article>`;
+      }).join("");
+    }
+
+    function renderCategoryCatalog() {
+      const preferredDepartments = ["Gorras", "Ropa", "Tenis", "Joyería", "Perfumes"];
+      const departments = [
+        ...preferredDepartments.filter(department => products.some(product => product.department === department)),
+        ...new Set(products
+          .map(product => product.department)
+          .filter(department => department && !preferredDepartments.includes(department)))
+      ];
+      const categories = departments
+        .map(department => ({
+          department,
+          products: products.filter(product => product.department === department)
+        }))
+        .filter(category => category.products.length);
+      const catalog = document.getElementById("category-catalog");
+      catalog.dataset.count = String(categories.length);
+      catalog.innerHTML = categories.map(({ department, products: categoryProducts }, index) => {
+        const title = department === "Tenis" ? "Calzado" : department;
+        const descriptions = {
+          Gorras: "Diseño y actitud",
+          Ropa: "Prendas para todos los días",
+          Tenis: "Estilo para moverte",
+          "Joyería": "Detalles que completan tu look",
+          Perfumes: "Esencias para cada ocasión"
+        };
+        const categoryImageUrl = publicProductImageUrl(categoryImages[department]);
+        const artwork = categoryImageUrl
+          ? `<img class="category-cover" src="${escapeHtml(categoryImageUrl)}" alt="" loading="lazy">`
+          : categoryProducts.slice(0, 3).map((product, productIndex) => {
+          const variant = getVariant(product);
+          const art = productArt({
+            ...product,
+            color: variant.color?.color || product.color,
+            brim: variant.color?.brim || product.brim
+          }, "category-product-art");
+          return `<span class="category-product category-product-${productIndex + 1}">${art}</span>`;
+        }).join("");
+        const countLabel = String(categoryProducts.length).padStart(2, "0");
+        return `
+          <button type="button" class="category-tile" data-department="${escapeHtml(department)}" aria-label="Ver ${escapeHtml(title)}, ${categoryProducts.length} productos">
+            <span class="category-tile-art" aria-hidden="true">${artwork}</span>
+            <span class="category-tile-info">
+              <span class="category-tile-count">${countLabel} PRODUCTOS</span>
+              <span class="category-tile-name">${escapeHtml(title)}</span>
+              <span class="category-tile-description">${escapeHtml(descriptions[department] || "Explora la colección")}</span>
+              <span class="category-tile-arrow" aria-hidden="true">↗</span>
+            </span>
+          </button>`;
       }).join("");
     }
 
@@ -614,25 +670,173 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       if (event.target === event.currentTarget) closeProductModal();
     });
 
-    document.querySelector(".filters").addEventListener("click", event => {
-      const button = event.target.closest("[data-department]");
-      if (!button) return;
-      activeFilter = button.dataset.department;
-      const descriptions = {
-        Gorras: "Diseños esenciales para completar tu estilo.",
-        Ropa: "Prendas cómodas con actitud para todos los días.",
-        Perfumes: "Fragancias para dejar huella en cada ocasión.",
-        "Joyería": "Detalles que elevan cualquier combinación.",
-        Tenis: "Comodidad y estilo para moverte por la ciudad."
-      };
-      document.getElementById("collection-title").textContent = activeFilter;
-      document.getElementById("collection-description").textContent = descriptions[activeFilter];
-      document.querySelectorAll(".filter-button").forEach(filterButton => {
-        const isActive = filterButton === button;
-        filterButton.classList.toggle("active", isActive);
-        filterButton.setAttribute("aria-pressed", String(isActive));
+    const departmentDescriptions = {
+      "": "Explora nuestra colección y encuentra lo que va contigo.",
+      Gorras: "Diseños esenciales para completar tu estilo.",
+      Ropa: "Prendas cómodas con actitud para todos los días.",
+      "Joyería": "Detalles que elevan cualquier combinación.",
+      Tenis: "Comodidad y estilo para moverte por la ciudad."
+    };
+
+    function renderSizeOptions() {
+      let sizeCatalog = products.filter(product =>
+        product.department === sizeFilterDepartment &&
+        Array.isArray(product.sizeOptions) &&
+        product.sizeOptions.length
+      );
+      if (!sizeCatalog.length) {
+        sizeCatalog = window.CAPSTREET_PRODUCTS.filter(product => product.department === sizeFilterDepartment);
+      }
+      const options = [...new Set(sizeCatalog
+        .filter(product => Array.isArray(product.sizeOptions))
+        .flatMap(product => product.sizeOptions))];
+      document.getElementById("size-options").innerHTML = options.map(size =>
+        `<button type="button" class="shoe-size-button" data-size="${escapeHtml(size)}" aria-pressed="${size === selectedSize}">${escapeHtml(size)}</button>`
+      ).join("");
+      document.querySelectorAll("#department-page-picker [data-size-department]").forEach(button => {
+        button.setAttribute("aria-pressed", String(button.dataset.sizeDepartment === sizeFilterDepartment));
       });
+    }
+
+    function updateSizeFinderDescription() {
+      document.getElementById("size-finder-description").textContent =
+        "Elige ropa o calzado para ver tallas y productos en su propio apartado.";
+    }
+
+    function syncDepartmentMenu() {
+      document.querySelectorAll(".nav-store-dropdown [data-department]").forEach(link => {
+        const department = link.dataset.department === "all" ? "" : link.dataset.department;
+        if (department === activeFilter) link.setAttribute("aria-current", "page");
+        else link.removeAttribute("aria-current");
+      });
+    }
+
+    function updateDepartmentPageHeading() {
+      const title = activeFilter === "Tenis" ? "Calzado" : activeFilter || "Tienda";
+      const categoryName = sizeFilterDepartment === "Tenis" ? "Calzado" : "Ropa";
+      document.getElementById("department-page-title").textContent = selectedSize
+        ? `${categoryName} · Talla ${selectedSize}`
+        : title;
+      document.getElementById("department-page-description").textContent = selectedSize
+        ? `${categoryName} disponibles en la talla que elegiste.`
+        : departmentDescriptions[activeFilter] || departmentDescriptions[""];
+      document.getElementById("department-size-tools").hidden = !["Ropa", "Tenis"].includes(activeFilter);
+    }
+
+    function openDepartmentPage(department) {
+      activeFilter = department;
+      selectedSize = null;
+      if (department === "Ropa" || department === "Tenis") sizeFilterDepartment = department;
+      document.querySelectorAll(".home-view").forEach(section => { section.hidden = true; });
+      document.querySelector(".benefits").hidden = true;
+      document.querySelector("footer").hidden = true;
+      document.getElementById("department-page").hidden = false;
+      document.getElementById("clear-size-filter").hidden = true;
+      renderSizeOptions();
+      updateSizeFinderDescription();
+      updateDepartmentPageHeading();
+      syncDepartmentMenu();
       renderProducts();
+      document.querySelector(".nav-store-menu").open = false;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function closeDepartmentPage() {
+      document.getElementById("department-page").hidden = true;
+      document.querySelectorAll(".home-view").forEach(section => { section.hidden = false; });
+      document.querySelector(".benefits").hidden = false;
+      document.querySelector("footer").hidden = false;
+      selectedSize = null;
+      document.getElementById("clear-size-filter").hidden = true;
+      renderSizeOptions();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function setActiveDepartment(department) {
+      activeFilter = department;
+      selectedSize = null;
+      if (department === "Ropa" || department === "Tenis") sizeFilterDepartment = department;
+      renderSizeOptions();
+      updateSizeFinderDescription();
+      updateDepartmentPageHeading();
+      document.getElementById("clear-size-filter").hidden = true;
+      syncDepartmentMenu();
+      renderProducts();
+    }
+
+    renderSizeOptions();
+    renderCategoryCatalog();
+    updateSizeFinderDescription();
+    syncDepartmentMenu();
+
+    document.getElementById("category-catalog").addEventListener("click", event => {
+      const tile = event.target.closest("[data-department]");
+      if (!tile) return;
+      openDepartmentPage(tile.dataset.department);
+    });
+
+    document.querySelector(".nav-store-dropdown").addEventListener("click", event => {
+      const link = event.target.closest("[data-department]");
+      if (!link) return;
+      event.preventDefault();
+      const department = link.dataset.department === "all" ? "" : link.dataset.department;
+      openDepartmentPage(department);
+    });
+
+    document.querySelector(".size-department-picker").addEventListener("click", event => {
+      const button = event.target.closest("[data-size-department]");
+      if (!button) return;
+      openDepartmentPage(button.dataset.sizeDepartment);
+    });
+
+    document.getElementById("department-page-picker").addEventListener("click", event => {
+      const button = event.target.closest("[data-size-department]");
+      if (!button) return;
+      activeFilter = button.dataset.sizeDepartment;
+      sizeFilterDepartment = activeFilter;
+      selectedSize = null;
+      document.getElementById("clear-size-filter").hidden = true;
+      renderSizeOptions();
+      updateSizeFinderDescription();
+      updateDepartmentPageHeading();
+      syncDepartmentMenu();
+      renderProducts();
+    });
+
+    document.querySelector(".shoe-size-picker").addEventListener("click", event => {
+      const button = event.target.closest("[data-size]");
+      if (!button) return;
+      selectedSize = button.dataset.size;
+      activeFilter = sizeFilterDepartment;
+      products.filter(product =>
+        product.department === sizeFilterDepartment &&
+        Array.isArray(product.sizeOptions) &&
+        product.sizeOptions.includes(selectedSize)
+      ).forEach(product => {
+        selectedVariants.set(product.id, {
+          colorId: getVariant(product).color.id,
+          size: selectedSize
+        });
+      });
+      updateDepartmentPageHeading();
+      document.querySelectorAll(".shoe-size-button").forEach(sizeButton => {
+        sizeButton.setAttribute("aria-pressed", String(sizeButton === button));
+      });
+      document.getElementById("clear-size-filter").hidden = false;
+      syncDepartmentMenu();
+      renderProducts();
+    });
+
+    document.getElementById("clear-size-filter").addEventListener("click", () => {
+      setActiveDepartment(sizeFilterDepartment);
+    });
+    document.getElementById("department-back").addEventListener("click", closeDepartmentPage);
+    document.querySelectorAll(".brand").forEach(brand => {
+      brand.addEventListener("click", event => {
+        if (document.getElementById("department-page").hidden) return;
+        event.preventDefault();
+        closeDepartmentPage();
+      });
     });
 
     document.getElementById("product-search").addEventListener("input", renderProducts);
@@ -653,7 +857,7 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       event.currentTarget.setAttribute("aria-expanded", String(isOpening));
       event.currentTarget.setAttribute("aria-label", isOpening ? "Ocultar búsqueda y filtros" : "Mostrar búsqueda y filtros");
       if (isOpening) {
-        document.getElementById("coleccion").scrollIntoView({ behavior: "smooth" });
+        if (document.getElementById("department-page").hidden) openDepartmentPage(activeFilter);
         setTimeout(() => document.getElementById("product-search").focus(), 350);
       }
     });
@@ -1288,10 +1492,27 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
         if (!response.ok || !Array.isArray(result.products)) {
           throw new Error(result.error || "La API devolvió un catálogo no válido.");
         }
+        if (!result.products.length) {
+          throw new Error("La API devolvió un catálogo vacío.");
+        }
         products = result.products;
       } catch (error) {
         console.error("No se pudo cargar el catálogo actualizado.", error);
         showToast("No pudimos actualizar el catálogo. Intenta recargar la página.");
+      }
+    }
+
+    async function loadCategoryImages() {
+      try {
+        const response = await fetch(`${CHECKOUT_API_URL}/api/category-images`);
+        if (!response.ok) throw new Error(`La API respondió HTTP ${response.status}.`);
+        const result = await response.json();
+        if (!result.images || typeof result.images !== "object" || Array.isArray(result.images)) {
+          throw new Error("La API devolvió imágenes de categorías no válidas.");
+        }
+        categoryImages = result.images;
+      } catch (error) {
+        console.error("No se pudieron cargar las imágenes personalizadas de categorías.", error);
       }
     }
 
@@ -1331,7 +1552,9 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
     }
 
     (async () => {
-      await Promise.all([loadCatalog(), loadHeroVideo()]);
+      await Promise.all([loadCatalog(), loadHeroVideo(), loadCategoryImages()]);
+      renderSizeOptions();
+      renderCategoryCatalog();
       cart = loadSavedCart();
       favorites = loadSavedWishlist();
       renderProducts();

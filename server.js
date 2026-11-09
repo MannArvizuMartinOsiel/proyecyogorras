@@ -14,6 +14,7 @@ const PRODUCT_TYPES = {
   bracelet: "Joyería",
   sneaker: "Tenis"
 };
+const CATEGORY_DEPARTMENTS = new Set(["Gorras", "Ropa", "Perfumes", "Joyería", "Tenis"]);
 const PRODUCT_IMAGE_BUCKET = "product-images";
 const MAX_PRODUCT_IMAGE_BYTES = 4 * 1024 * 1024;
 const HERO_VIDEO_BUCKET = "hero-videos";
@@ -411,6 +412,15 @@ async function getHeroVideo() {
   return data;
 }
 
+async function getCategoryImageCatalog() {
+  if (!adminClient) return {};
+  const { data, error } = await adminClient
+    .from("admin_category_images")
+    .select("department,image_url");
+  if (error) throw error;
+  return Object.fromEntries(data.map(row => [row.department, row.image_url]));
+}
+
 async function uploadHeroVideo(videoBuffer, contentType) {
   const videoType = HERO_VIDEO_TYPES.get(contentType);
   if (
@@ -737,6 +747,114 @@ app.get("/api/products", async (_req, res) => {
   } catch (error) {
     console.error("Could not load product catalog.", error);
     return res.json({ products, source: "bundled" });
+  }
+});
+
+app.get("/api/category-images", async (_req, res) => {
+  try {
+    return res.json({ images: await getCategoryImageCatalog() });
+  } catch (error) {
+    console.error("Could not load catalog category images.", error);
+    return res.status(503).json({
+      error: "No se pudieron cargar las imágenes de categorías. Verifica que supabase-schema.sql esté actualizado."
+    });
+  }
+});
+
+app.get("/api/admin/category-images", async (req, res) => {
+  try {
+    if (!await getAdminUser(req, res)) return;
+    return res.json({ images: await getCategoryImageCatalog() });
+  } catch (error) {
+    console.error("Could not load admin category images.", error);
+    return res.status(503).json({
+      error: "No se pudieron cargar las imágenes de categorías. Ejecuta supabase-schema.sql y vuelve a intentar."
+    });
+  }
+});
+
+app.put("/api/admin/category-images/:department", express.json({ limit: "6mb" }), async (req, res) => {
+  let uploadedImagePath = null;
+  try {
+    if (!await getAdminUser(req, res)) return;
+    const department = req.params.department;
+    if (!CATEGORY_DEPARTMENTS.has(department)) {
+      return res.status(400).json({ error: "La categoría indicada no es válida." });
+    }
+    if (typeof req.body?.imageData !== "string") {
+      return res.status(400).json({ error: "Selecciona una imagen válida para la categoría." });
+    }
+    const { data: current, error: currentError } = await adminClient
+      .from("admin_category_images")
+      .select("image_url,image_path")
+      .eq("department", department)
+      .maybeSingle();
+    if (currentError) throw currentError;
+
+    const uploaded = await uploadProductImage(req.body.imageData);
+    uploadedImagePath = uploaded.path;
+    const { error } = await adminClient.from("admin_category_images").upsert({
+      department,
+      image_url: uploaded.url,
+      image_path: uploaded.path,
+      updated_at: new Date().toISOString()
+    });
+    if (error) throw error;
+    uploadedImagePath = null;
+    if (current?.image_url && current.image_url !== uploaded.url) {
+      await removeProductImage(current.image_url);
+    }
+    return res.json({ department, imageUrl: uploaded.url });
+  } catch (error) {
+    console.error("Could not save catalog category image.", error);
+    if (uploadedImagePath && adminClient) {
+      const { error: cleanupError } = await adminClient.storage
+        .from(PRODUCT_IMAGE_BUCKET)
+        .remove([uploadedImagePath]);
+      if (cleanupError) console.error("Could not remove orphaned category image.", cleanupError);
+    }
+    if (["42P01", "PGRST204", "PGRST205"].includes(error.code) || /admin_category_images/i.test(error.message || "")) {
+      return res.status(503).json({
+        error: "Falta actualizar Supabase. Ejecuta el archivo supabase-schema.sql y vuelve a intentar."
+      });
+    }
+    return res.status(error.status || 503).json({
+      error: error.message || "No pudimos guardar la imagen de categoría."
+    });
+  }
+});
+
+app.delete("/api/admin/category-images/:department", async (req, res) => {
+  try {
+    if (!await getAdminUser(req, res)) return;
+    const department = req.params.department;
+    if (!CATEGORY_DEPARTMENTS.has(department)) {
+      return res.status(400).json({ error: "La categoría indicada no es válida." });
+    }
+    const { data: current, error: currentError } = await adminClient
+      .from("admin_category_images")
+      .select("image_url")
+      .eq("department", department)
+      .maybeSingle();
+    if (currentError) throw currentError;
+    if (!current) return res.json({ department, imageUrl: null });
+    const { error } = await adminClient
+      .from("admin_category_images")
+      .delete()
+      .eq("department", department);
+    if (error) throw error;
+    await removeProductImage(current.image_url);
+    return res.json({ department, imageUrl: null });
+  } catch (error) {
+    console.error("Could not remove catalog category image.", error);
+    if (["42P01", "PGRST204", "PGRST205"].includes(error.code) || /admin_category_images/i.test(error.message || "")) {
+      return res.status(503).json({
+        error: "Falta actualizar Supabase. Ejecuta el archivo supabase-schema.sql y vuelve a intentar."
+      });
+    }
+    return res.status(error.status || 503).json({
+      error: error.message || "No pudimos quitar la imagen de categoría."
+    });
   }
 });
 

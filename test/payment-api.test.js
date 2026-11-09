@@ -108,6 +108,9 @@ test("the API remains available and disables checkout when payment credentials a
   assert.equal(catalog.status, 200);
   const catalogResult = await catalog.json();
   assert.equal(catalogResult.products.length, 20);
+  const categoryImages = await fetch(`http://127.0.0.1:${port}/api/category-images`);
+  assert.equal(categoryImages.status, 200);
+  assert.deepEqual(await categoryImages.json(), { images: {} });
   assert.equal(catalogResult.products[0].name, "La Clásica");
   assert.equal(catalogResult.source, "bundled");
 

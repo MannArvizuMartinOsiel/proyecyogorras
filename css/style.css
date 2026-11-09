@@ -79,6 +79,50 @@
       transition: opacity .2s ease;
     }
     .nav-links a:hover { opacity: .55; }
+    .nav-store-menu { position: relative; }
+    .nav-store-menu summary {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      list-style: none;
+    }
+    .nav-store-menu summary::-webkit-details-marker { display: none; }
+    .nav-store-menu summary::after { content: "+"; color: var(--muted); font-size: 15px; font-weight: 400; }
+    .nav-store-menu[open] summary::after { content: "−"; }
+    .nav-store-dropdown {
+      position: absolute;
+      z-index: 25;
+      top: calc(100% + 24px);
+      left: -20px;
+      width: 230px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      background: #171717;
+      box-shadow: 0 16px 40px rgba(0,0,0,.4);
+    }
+    .nav-store-dropdown p {
+      margin: 0;
+      padding: 4px 8px 11px;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .nav-store-dropdown a {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 11px 8px;
+      border-top: 1px solid var(--line);
+      font-size: 12px;
+    }
+    .nav-store-dropdown a span { color: var(--muted); font-size: 9px; }
+    .nav-store-dropdown a:hover { background: #222; opacity: 1; }
+    .nav-store-dropdown a[aria-current="page"] { background: #222; color: var(--ink); }
     .nav-actions { display: flex; align-items: center; gap: 10px; }
     .account-button {
       min-height: 42px;
@@ -336,20 +380,6 @@
     .shop-controls {
       margin: 0 0 22px;
     }
-    .filters { display: flex; flex-wrap: wrap; gap: 7px; }
-    .filter-button {
-      min-height: 35px;
-      padding: 0 14px;
-      border: 1px solid var(--line);
-      border-radius: 20px;
-      background: transparent;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: .2s;
-    }
-    .filter-button:hover, .filter-button.active { border-color: var(--ink); background: var(--ink); color: var(--white); }
     .shop-tools {
       display: flex;
       align-items: center;
@@ -426,7 +456,84 @@
       cursor: pointer;
     }
     .clear-filters:hover { color: var(--ink); }
+    .category-catalog {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(205px, 1fr));
+      gap: 14px;
+      margin: 0 0 46px;
+    }
+    .category-tile {
+      position: relative;
+      min-width: 0;
+      min-height: 205px;
+      overflow: hidden;
+      padding: 0;
+      border: 1px solid #333;
+      border-radius: 12px;
+      background: #222;
+      color: #f5f5f5;
+      text-align: left;
+      cursor: pointer;
+      isolation: isolate;
+      transition: border-color .2s, transform .25s;
+    }
+    .category-tile[data-department="Gorras"] { grid-row: span 2; }
+    .category-catalog[data-count="4"] .category-tile[data-department="Joyería"] { grid-column: 3; grid-row: 1 / span 2; }
+    .category-tile:hover { z-index: 1; border-color: #777; transform: translateY(-3px); }
+    .category-tile-art {
+      position: absolute;
+      z-index: -1;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: radial-gradient(ellipse at 50% 35%, #555 0, #292929 53%, #1b1b1b 100%);
+    }
+    .category-tile-art::after {
+      position: absolute;
+      inset: 30% 0 0;
+      background: linear-gradient(180deg, transparent, rgba(0,0,0,.92));
+      content: "";
+    }
+    .category-cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .category-tile[data-department="Ropa"] .category-tile-art { background: radial-gradient(ellipse at 50% 35%, #666 0, #303030 65%, #202020 100%); }
+    .category-tile[data-department="Tenis"] .category-tile-art { background: radial-gradient(ellipse at 50% 50%, #555 0, #292929 66%, #1b1b1b 100%); }
+    .category-tile[data-department="Joyería"] .category-tile-art { background: radial-gradient(ellipse at 50% 42%, #5b584f 0, #2e2c29 60%, #1c1c1c 100%); }
+    .category-product {
+      position: absolute;
+      inset: 9% 5% 13%;
+      display: grid;
+      place-items: center;
+      transition: transform .35s ease;
+    }
+    .category-product-1 { z-index: 1; }
+    .category-product-2 { z-index: 0; transform: translate(-28%, 8%) scale(.67) rotate(-9deg); }
+    .category-product-3 { z-index: 0; transform: translate(28%, 8%) scale(.67) rotate(9deg); }
+    .category-product-art { width: 88%; height: 88%; object-fit: contain; filter: drop-shadow(0 16px 13px rgba(0,0,0,.35)); }
+    img.category-product-art { height: 88%; }
+    .category-tile[data-department="Gorras"] .category-product-art { width: 105%; }
+    .category-tile[data-department="Ropa"] .category-product-art { width: 72%; }
+    .category-tile[data-department="Tenis"] .category-product-art { width: 100%; }
+    .category-tile[data-department="Tenis"] .category-product { inset: 2% 5% 26%; }
+    .category-tile-info {
+      position: absolute;
+      z-index: 2;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      display: grid;
+      gap: 4px;
+      padding: 20px;
+    }
+    .category-tile-count { color: #c4c4c4; font-size: 9px; font-weight: 600; letter-spacing: .12em; }
+    .category-tile-name { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    .category-tile-description { color: #d0d0d0; font-size: 10px; }
+    .category-tile-arrow { position: absolute; right: 20px; bottom: 22px; font-size: 18px; transition: transform .2s; }
+    .category-tile:hover .category-tile-arrow { transform: translate(3px, -3px); }
     .products-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 15px; }
+    .category-catalog + .products-grid { scroll-margin-top: 100px; }
     .product-card { min-width: 0; animation: appear .35s ease both; }
     @keyframes appear { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     .product-visual {
@@ -503,6 +610,155 @@
     .product-price { flex: 0 0 auto; font-size: 12px; font-weight: 700; }
     .product-description { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
     .empty-state { grid-column: 1 / -1; padding: 60px 20px; color: var(--muted); text-align: center; font-size: 13px; }
+
+    .shoe-finder {
+      width: 100%;
+      min-height: 390px;
+      margin: 0 0 70px;
+      padding: 68px max(32px, calc((100% - 1240px) / 2));
+      display: grid;
+      grid-template-columns: minmax(230px, .55fr) minmax(0, 1.45fr);
+      align-items: center;
+      gap: 54px;
+      background: #080808;
+    }
+    .shoe-finder-copy { max-width: 310px; }
+    .shoe-finder-copy h2 {
+      margin: 0 0 18px;
+      font-family: var(--font-display);
+      font-size: clamp(40px, 5vw, 62px);
+      font-weight: 700;
+      letter-spacing: -.065em;
+      line-height: .92;
+      text-transform: uppercase;
+    }
+    .shoe-finder-copy > p:last-child { max-width: 330px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+    .size-finder-controls { min-width: 0; display: grid; gap: 24px; }
+    .size-department-picker {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid #303030;
+    }
+    .shoe-size-picker {
+      display: flex;
+      justify-content: flex-start;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      gap: 8px;
+      padding: 0 0 6px;
+      scrollbar-color: #555 transparent;
+    }
+    .size-department-button {
+      position: relative;
+      min-height: 56px;
+      padding: 0 18px;
+      border: 0;
+      background: transparent;
+      color: #777;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: color .2s;
+    }
+    .size-department-button[aria-pressed="true"] {
+      color: #f5f5f5;
+    }
+    .size-department-button[aria-pressed="true"]::after {
+      position: absolute;
+      right: 0;
+      bottom: -1px;
+      left: 0;
+      height: 2px;
+      background: #f5f5f5;
+      content: "";
+    }
+    .shoe-size-button, .shoe-size-clear {
+      min-width: 76px;
+      height: 66px;
+      padding: 0 10px;
+      border: 1px solid #858585;
+      border-radius: 12px;
+      background: transparent;
+      color: #f5f5f5;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .2s, color .2s, border-color .2s;
+    }
+    .shoe-size-button:hover, .shoe-size-button[aria-pressed="true"] {
+      border-color: #f5f5f5;
+      background: #f5f5f5;
+      color: #111;
+    }
+    .shoe-size-clear { min-width: 0; height: auto; border-color: transparent; color: var(--muted); font-size: 12px; text-decoration: underline; }
+    .shoe-size-clear[hidden] { display: none; }
+    .shoe-size-clear:hover { color: var(--ink); }
+    .home-view[hidden], .department-page[hidden], .benefits[hidden], footer[hidden] { display: none !important; }
+    .department-page {
+      width: min(1240px, calc(100% - 64px));
+      min-height: calc(100vh - 76px);
+      margin: 0 auto;
+      padding: 46px 0 90px;
+    }
+    .department-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 48px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .department-back:hover { color: var(--ink); }
+    .department-back span { font-size: 19px; line-height: 1; }
+    .department-page-heading { margin-bottom: 38px; }
+    .department-page-heading h1 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: clamp(42px, 6vw, 72px);
+      font-weight: 600;
+      letter-spacing: -.075em;
+      line-height: 1;
+    }
+    .department-size-tools { margin: 0 0 36px; }
+    .department-size-tools[hidden] { display: none; }
+    .department-page-picker {
+      display: inline-flex;
+      gap: 28px;
+      margin-bottom: 22px;
+      border-bottom: 1px solid #303030;
+    }
+    .department-page-button {
+      position: relative;
+      min-height: 48px;
+      padding: 0 2px;
+      border: 0;
+      background: transparent;
+      color: #777;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .department-page-button[aria-pressed="true"] { color: #f5f5f5; }
+    .department-page-button[aria-pressed="true"]::after {
+      position: absolute;
+      right: 0;
+      bottom: -1px;
+      left: 0;
+      height: 2px;
+      background: #f5f5f5;
+      content: "";
+    }
+    .department-size-label { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+    .department-page .shop-controls { margin-top: 20px; }
+    .department-page .products-grid { margin-top: 22px; }
 
     .statement {
       position: relative;
@@ -864,13 +1120,24 @@
       .hero-art { min-height: 360px; }
       .products-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 14px; }
       .quick-add { opacity: 1; transform: none; }
+      .category-catalog { grid-template-rows: repeat(2, minmax(175px, 1fr)); gap: 10px; }
+      .category-tile { min-height: 175px; }
+      .category-tile-info { padding: 15px; }
+      .category-tile-arrow { right: 15px; bottom: 17px; }
+      .shoe-finder { min-height: 0; grid-template-columns: minmax(180px, .65fr) minmax(0, 1.35fr); gap: 28px; padding: 54px 32px; }
+      .shoe-size-button { min-width: 62px; height: 58px; }
+      .department-page { width: calc(100% - 44px); padding-top: 32px; }
+      .department-back { margin-bottom: 36px; }
     }
     @media (max-width: 640px) {
       .announcement { font-size: 9px; letter-spacing: .1em; }
       .nav { width: calc(100% - 36px); min-height: 64px; }
       .brand { font-size: 19px; }
-      .nav-links { display: none; }
-      .nav-actions { gap: 7px; }
+      .nav-links { display: flex; gap: 0; }
+      .nav-links > a { display: none; }
+      .nav-store-menu summary { font-size: 11px; }
+      .nav-store-dropdown { top: calc(100% + 15px); left: -8px; width: min(230px, calc(100vw - 36px)); }
+      .nav-actions { gap: 5px; }
       .icon-button { width: 38px; height: 38px; }
       .account-button { width: 38px; min-height: 38px; padding: 0; }
       .account-button span { display: none; }
@@ -885,10 +1152,16 @@
       .benefit { min-height: 75px; gap: 6px; padding: 10px 5px; font-size: 7px; letter-spacing: .02em; text-align: center; }
       .benefit svg { width: 15px; height: 15px; }
       .collection { width: calc(100% - 36px); padding: 70px 0 75px; }
+      .category-catalog { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(160px, 1fr)); gap: 9px; margin-bottom: 32px; }
+      .category-tile { min-height: 160px; }
+      .category-tile[data-department="Gorras"] { grid-row: span 2; }
+      .category-catalog[data-count="4"] .category-tile[data-department="Joyería"] { grid-column: auto; grid-row: auto; }
+      .category-tile-info { padding: 12px; }
+      .category-tile-name { font-size: 11px; }
+      .category-tile-description { max-width: 85%; font-size: 9px; }
+      .category-tile-arrow { right: 12px; bottom: 13px; }
       .section-heading { align-items: start; flex-direction: column; gap: 10px; margin-bottom: 24px; }
       .section-heading p { max-width: 310px; }
-      .filters { gap: 6px; }
-      .filter-button { min-height: 36px; padding: 0 12px; font-size: 11px; }
       .shop-tools { gap: 7px; }
       .search-wrap { flex: 1 1 100%; max-width: none; }
       .shop-select { min-width: 0; width: 100%; }
@@ -902,6 +1175,20 @@
       .product-tag { top: 8px; left: 8px; padding: 5px 6px; font-size: 8px; }
       .favorite-button { top: 6px; right: 6px; width: 29px; height: 29px; }
       .quick-add { right: 7px; bottom: 7px; left: 7px; min-height: 38px; padding: 0 9px; font-size: 10px; }
+      .shoe-finder { grid-template-columns: 1fr; gap: 30px; margin-bottom: 48px; padding: 48px 18px; }
+      .shoe-finder-copy { max-width: none; }
+      .shoe-finder-copy h2 { font-size: clamp(42px, 12vw, 56px); }
+      .size-finder-controls { gap: 16px; }
+      .size-department-picker { gap: 0; }
+      .size-department-button { min-height: 48px; font-size: 12px; }
+      .shoe-size-picker { gap: 8px; }
+      .shoe-size-button { flex: 0 0 58px; min-width: 58px; height: 58px; padding: 0 6px; font-size: 16px; }
+      .department-page { width: calc(100% - 36px); min-height: calc(100vh - 64px); padding: 28px 0 64px; }
+      .department-back { margin-bottom: 32px; }
+      .department-page-heading { align-items: start; flex-direction: column; gap: 12px; margin-bottom: 28px; }
+      .department-page-heading p { max-width: 310px; }
+      .department-page-picker { width: 100%; gap: 26px; }
+      .department-page-button { flex: 1; }
       .statement { padding: 65px 22px; }
       footer { width: calc(100% - 36px); min-height: 130px; align-items: flex-start; flex-direction: column; justify-content: center; gap: 13px; }
       .footer-links { gap: 15px; }

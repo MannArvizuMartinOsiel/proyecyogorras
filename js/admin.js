@@ -17,6 +17,13 @@ const typeOptions = {
   Joyería: [["chain", "Cadena"], ["bracelet", "Pulsera"]],
   Tenis: [["sneaker", "Tenis"]]
 };
+const adminCategoryOptions = [
+  ["Gorras", "Gorras"],
+  ["Ropa", "Ropa"],
+  ["Tenis", "Calzado"],
+  ["Joyería", "Joyería"],
+  ["Perfumes", "Perfumes"]
+];
 const loginForm = document.getElementById("admin-login-form");
 const loginMessage = document.getElementById("admin-login-message");
 const loginSection = document.getElementById("admin-login");
@@ -24,6 +31,9 @@ const dashboard = document.getElementById("admin-dashboard");
 let adminProductCache = [];
 let editingProduct = null;
 let removeExistingImage = false;
+let adminCategoryImageCache = {};
+const pendingCategoryImages = new Map();
+const categoryImagePreviewUrls = new Map();
 
 function showLoginMessage(message) {
   loginMessage.textContent = message;
@@ -160,6 +170,68 @@ function setProductFormReadOnly(readOnly) {
   document.getElementById("product-cancel-edit").disabled = false;
 }
 
+function renderCategoryImages() {
+  for (const previewUrl of categoryImagePreviewUrls.values()) URL.revokeObjectURL(previewUrl);
+  categoryImagePreviewUrls.clear();
+  pendingCategoryImages.clear();
+  const container = document.getElementById("admin-category-image-list");
+  container.replaceChildren(...adminCategoryOptions.map(([department, label]) => {
+    const card = document.createElement("article");
+    card.className = "admin-category-image-card";
+    const heading = document.createElement("h4");
+    heading.textContent = label;
+    const preview = document.createElement("div");
+    preview.className = "admin-category-image-preview";
+    const image = document.createElement("img");
+    image.alt = `Imagen de la categoría ${label}`;
+    image.hidden = !adminCategoryImageCache[department];
+    if (adminCategoryImageCache[department]) image.src = adminCategoryImageCache[department];
+    const placeholder = document.createElement("span");
+    placeholder.textContent = "Se usan las ilustraciones de productos";
+    placeholder.hidden = Boolean(adminCategoryImageCache[department]);
+    preview.append(image, placeholder);
+    const labelElement = document.createElement("label");
+    labelElement.textContent = "Cambiar imagen";
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/jpeg,image/png,image/webp";
+    input.dataset.categoryImageFile = department;
+    labelElement.append(input);
+    const actions = document.createElement("div");
+    actions.className = "admin-category-image-actions";
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.className = "button";
+    saveButton.dataset.saveCategoryImage = department;
+    saveButton.textContent = "Guardar imagen";
+    saveButton.disabled = true;
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "admin-cancel-edit";
+    removeButton.dataset.removeCategoryImage = department;
+    removeButton.textContent = "Quitar imagen";
+    removeButton.disabled = !adminCategoryImageCache[department];
+    actions.append(saveButton, removeButton);
+    const message = document.createElement("p");
+    message.className = "admin-category-image-message";
+    message.dataset.categoryImageMessage = department;
+    message.setAttribute("role", "status");
+    card.append(heading, preview, labelElement, actions, message);
+    return card;
+  }));
+}
+
+async function loadAdminCategoryImages(session) {
+  const result = await adminRequest("/api/admin/category-images", session);
+  adminCategoryImageCache = result.images;
+  renderCategoryImages();
+}
+
+function setCategoryImagesReadOnly(readOnly) {
+  document.querySelectorAll("#admin-category-image-list input, #admin-category-image-list button")
+    .forEach(control => { control.disabled = readOnly; });
+}
+
 async function showDashboard(session) {
   document.getElementById("admin-session-email").textContent = session.user.email;
   loginSection.hidden = true;
@@ -169,6 +241,17 @@ async function showDashboard(session) {
   message.textContent = "";
   try {
     await loadAdminProducts(session);
+    setCategoryImagesReadOnly(document.getElementById("product-save-button").disabled);
+    try {
+      await loadAdminCategoryImages(session);
+      setCategoryImagesReadOnly(document.getElementById("product-save-button").disabled);
+    } catch (error) {
+      adminCategoryImageCache = {};
+      renderCategoryImages();
+      setCategoryImagesReadOnly(document.getElementById("product-save-button").disabled);
+      document.getElementById("admin-category-images-message").textContent =
+        `No se pudieron cargar las imágenes por categoría: ${error.message}`;
+    }
   } catch (error) {
     if (error.status === 401 || error.status === 403) {
       dashboard.hidden = true;
@@ -180,6 +263,9 @@ async function showDashboard(session) {
     if (Array.isArray(bundledProducts) && bundledProducts.length) {
       renderProducts(bundledProducts, { readOnly: true });
       setProductFormReadOnly(true);
+      adminCategoryImageCache = {};
+      renderCategoryImages();
+      setCategoryImagesReadOnly(true);
     }
     message.textContent = `El servidor no pudo cargar el catálogo: ${error.message}. Se muestran los productos originales en modo de solo lectura. Verifica la conexión de Supabase y vuelve a cargar el panel.`;
   }
@@ -189,6 +275,15 @@ async function showDashboard(session) {
     document.getElementById("admin-hero-video-message").textContent =
       `No se pudo cargar el video de portada: ${error.message}`;
   }
+}
+
+async function imageFileToDataUrl(file) {
+  const imageBuffer = new Uint8Array(await file.arrayBuffer());
+  const chunks = [];
+  for (let offset = 0; offset < imageBuffer.length; offset += 0x8000) {
+    chunks.push(String.fromCharCode(...imageBuffer.subarray(offset, offset + 0x8000)));
+  }
+  return `data:${file.type};base64,${btoa(chunks.join(""))}`;
 }
 
 function showImagePreview(source) {
@@ -318,6 +413,108 @@ productImageInput.addEventListener("change", () => {
   productImagePreviewImg.src = productImagePreviewUrl;
   productImagePreview.hidden = false;
   document.getElementById("admin-product-message").textContent = "";
+});
+
+document.getElementById("admin-category-image-list").addEventListener("change", event => {
+  const input = event.target.closest("[data-category-image-file]");
+  if (!input) return;
+  const department = input.dataset.categoryImageFile;
+  const file = input.files[0];
+  if (!file) return;
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 4 * 1024 * 1024) {
+    input.value = "";
+    const oldPreviewUrl = categoryImagePreviewUrls.get(department);
+    if (oldPreviewUrl) URL.revokeObjectURL(oldPreviewUrl);
+    categoryImagePreviewUrls.delete(department);
+    pendingCategoryImages.delete(department);
+    const card = input.closest(".admin-category-image-card");
+    const image = card.querySelector(".admin-category-image-preview img");
+    const existingImage = adminCategoryImageCache[department];
+    image.hidden = !existingImage;
+    if (existingImage) image.src = existingImage;
+    card.querySelector(".admin-category-image-preview span").hidden = Boolean(existingImage);
+    card.querySelector("[data-save-category-image]").disabled = true;
+    card.querySelector("[data-remove-category-image]").disabled = !existingImage;
+    card.querySelector(".admin-category-image-message").textContent =
+      "Elige una imagen JPG, PNG o WebP de máximo 4 MB.";
+    return;
+  }
+  const oldPreviewUrl = categoryImagePreviewUrls.get(department);
+  if (oldPreviewUrl) URL.revokeObjectURL(oldPreviewUrl);
+  const previewUrl = URL.createObjectURL(file);
+  categoryImagePreviewUrls.set(department, previewUrl);
+  pendingCategoryImages.set(department, file);
+  const card = input.closest(".admin-category-image-card");
+  const image = card.querySelector(".admin-category-image-preview img");
+  image.src = previewUrl;
+  image.hidden = false;
+  card.querySelector(".admin-category-image-preview span").hidden = true;
+  card.querySelector("[data-save-category-image]").disabled = false;
+  card.querySelector("[data-remove-category-image]").disabled = false;
+  card.querySelector(".admin-category-image-message").textContent = "";
+});
+
+document.getElementById("admin-category-image-list").addEventListener("click", async event => {
+  const saveButton = event.target.closest("[data-save-category-image]");
+  const removeButton = event.target.closest("[data-remove-category-image]");
+  if (!saveButton && !removeButton) return;
+  const department = (saveButton || removeButton).dataset.saveCategoryImage ||
+    (saveButton || removeButton).dataset.removeCategoryImage;
+  const card = (saveButton || removeButton).closest(".admin-category-image-card");
+  const message = card.querySelector(".admin-category-image-message");
+  const selectedFile = pendingCategoryImages.get(department);
+
+  if (removeButton && selectedFile) {
+    const previewUrl = categoryImagePreviewUrls.get(department);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    categoryImagePreviewUrls.delete(department);
+    pendingCategoryImages.delete(department);
+    const input = card.querySelector("[data-category-image-file]");
+    input.value = "";
+    const image = card.querySelector(".admin-category-image-preview img");
+    const existingImage = adminCategoryImageCache[department];
+    image.hidden = !existingImage;
+    if (existingImage) image.src = existingImage;
+    card.querySelector(".admin-category-image-preview span").hidden = Boolean(existingImage);
+    card.querySelector("[data-save-category-image]").disabled = true;
+    card.querySelector("[data-remove-category-image]").disabled = !existingImage;
+    message.textContent = "";
+    return;
+  }
+
+  const button = saveButton || removeButton;
+  setBusy(button, true, saveButton ? "Guardando..." : "Quitando...");
+  message.textContent = "";
+  try {
+    const { data, error } = await adminSupabase.auth.getSession();
+    if (error) throw error;
+    if (!data.session) throw new Error("Tu sesión terminó. Inicia sesión de nuevo.");
+    if (saveButton) {
+      if (!selectedFile) throw new Error("Selecciona una imagen antes de guardarla.");
+      const result = await adminRequest(`/api/admin/category-images/${encodeURIComponent(department)}`, data.session, {
+        method: "PUT",
+        body: JSON.stringify({ imageData: await imageFileToDataUrl(selectedFile) })
+      });
+      adminCategoryImageCache[department] = result.imageUrl;
+      renderCategoryImages();
+      document.querySelector(`[data-category-image-message="${department}"]`).textContent =
+        result.warning || "La imagen de categoría se actualizó.";
+    } else {
+      if (!adminCategoryImageCache[department]) return;
+      if (!window.confirm(`¿Quitar la imagen personalizada de ${department}?`)) return;
+      await adminRequest(`/api/admin/category-images/${encodeURIComponent(department)}`, data.session, {
+        method: "DELETE"
+      });
+      delete adminCategoryImageCache[department];
+      renderCategoryImages();
+      document.querySelector(`[data-category-image-message="${department}"]`).textContent =
+        "Se restauraron las ilustraciones de productos.";
+    }
+  } catch (error) {
+    message.textContent = error.message || "No se pudo actualizar la imagen de categoría.";
+  } finally {
+    if (button.isConnected) setBusy(button, false);
+  }
 });
 document.getElementById("product-image-remove").addEventListener("click", () => {
   if (productImageInput.files.length) {
@@ -459,13 +656,7 @@ document.getElementById("admin-product-form").addEventListener("submit", async e
       if (!["image/jpeg", "image/png", "image/webp"].includes(imageFile.type) || imageFile.size > 4 * 1024 * 1024) {
         throw new Error("Elige una imagen JPG, PNG o WebP de máximo 4 MB.");
       }
-      const imageBuffer = new Uint8Array(await imageFile.arrayBuffer());
-      const chunks = [];
-      for (let offset = 0; offset < imageBuffer.length; offset += 0x8000) {
-        chunks.push(String.fromCharCode(...imageBuffer.subarray(offset, offset + 0x8000)));
-      }
-      const binary = chunks.join("");
-      imageData = `data:${imageFile.type};base64,${btoa(binary)}`;
+      imageData = await imageFileToDataUrl(imageFile);
     }
     const endpoint = editingProduct
       ? `/api/admin/products/${encodeURIComponent(editingProduct.id)}`
