@@ -130,12 +130,12 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       if (product.type === "cap") return capSvg(product, className);
       const { color, brim, label } = product;
       const drawings = {
-        shirt: `<path d="m105 62 37-19h76l37 19 39 35-31 34-24-21v105H101V110l-24 21-31-34z" fill="${color}" stroke="#77766f" stroke-width="2"/><path d="M142 43c2 20 74 20 76 0" fill="none" stroke="#77766f" stroke-width="2"/><text x="180" y="139" text-anchor="middle" fill="${brim}" font-family="Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="1">${label}</text>`,
-        hoodie: `<path d="M119 77c-7-31 19-49 61-49s68 18 61 49l28 15 34 39-30 27-21-19v78H108v-78l-21 19-30-27 34-39z" fill="${color}" stroke="#77766f" stroke-width="2"/><path d="M136 57c5 31 83 31 88 0M136 57l10 48m58-48-10 48M143 107h74v31h-74z" fill="none" stroke="#77766f" stroke-width="2"/><text x="180" y="128" text-anchor="middle" fill="${brim}" font-family="Arial,sans-serif" font-size="10" font-weight="700">${label}</text>`,
+        shirt: `<path d="m105 62 37-19h76l37 19 39 35-31 34-24-21v105H101V110l-24 21-31-34z" fill="${color}" stroke="#777777" stroke-width="2"/><path d="M142 43c2 20 74 20 76 0" fill="none" stroke="#777777" stroke-width="2"/><text x="180" y="139" text-anchor="middle" fill="${brim}" font-family="Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="1">${label}</text>`,
+        hoodie: `<path d="M119 77c-7-31 19-49 61-49s68 18 61 49l28 15 34 39-30 27-21-19v78H108v-78l-21 19-30-27 34-39z" fill="${color}" stroke="#777777" stroke-width="2"/><path d="M136 57c5 31 83 31 88 0M136 57l10 48m58-48-10 48M143 107h74v31h-74z" fill="none" stroke="#777777" stroke-width="2"/><text x="180" y="128" text-anchor="middle" fill="${brim}" font-family="Arial,sans-serif" font-size="10" font-weight="700">${label}</text>`,
         chain: `<path d="M80 48c0 143 200 143 200 0" fill="none" stroke="${color}" stroke-width="14" stroke-linecap="round" stroke-dasharray="2 7"/><path d="M80 48c0 143 200 143 200 0" fill="none" stroke="${brim}" stroke-width="3"/><path d="m180 163 22 22-22 39-22-39z" fill="${color}" stroke="${brim}" stroke-width="3"/><text x="180" y="199" text-anchor="middle" fill="${brim}" font-family="Arial,sans-serif" font-size="9" font-weight="700">${label}</text>`,
         bracelet: `<ellipse cx="180" cy="130" rx="105" ry="69" fill="none" stroke="${color}" stroke-width="24"/><ellipse cx="180" cy="130" rx="105" ry="69" fill="none" stroke="${brim}" stroke-width="3" stroke-dasharray="2 8"/><rect x="163" y="53" width="34" height="27" rx="4" fill="${brim}"/><text x="180" y="71" text-anchor="middle" fill="${color}" font-family="Arial,sans-serif" font-size="9" font-weight="700">${label}</text>`,
-        sneaker: `<path d="M65 149c20-5 38-20 51-51l15-38 35 13c4 31 23 48 53 60l66 25c15 6 24 16 24 29 0 16-13 25-35 25H75c-23 0-39-11-39-29 0-15 10-28 29-34z" fill="${color}" stroke="#77766f" stroke-width="3"/><path d="M36 177h270c-1 24-17 35-38 35H75c-24 0-38-11-39-35z" fill="${brim}" stroke="#77766f" stroke-width="2"/><path d="m124 96 49 15m-57-1 45 14m-53 1 43 13m-11-68 5 38" fill="none" stroke="${brim}" stroke-width="5" stroke-linecap="round"/><text x="222" y="163" text-anchor="middle" fill="${brim === "#171715" ? "#f5f4ee" : "#171715"}" font-family="Arial,sans-serif" font-size="12" font-weight="700">${label}</text>`,
-        perfume: `<path d="M151 70h58v29l20 17v101H131V116l20-17z" fill="${color}" stroke="#77766f" stroke-width="3"/><path d="M164 70V49h32v21m-23-21V37h14v12" fill="none" stroke="${brim}" stroke-width="7" stroke-linejoin="round"/><path d="M145 129h70v48h-70z" fill="${brim}"/><text x="180" y="151" text-anchor="middle" fill="${brim === "#171715" ? "#f5f4ee" : "#171715"}" font-family="Arial,sans-serif" font-size="10" font-weight="700">${label}</text>`
+        sneaker: `<path d="M65 149c20-5 38-20 51-51l15-38 35 13c4 31 23 48 53 60l66 25c15 6 24 16 24 29 0 16-13 25-35 25H75c-23 0-39-11-39-29 0-15 10-28 29-34z" fill="${color}" stroke="#777777" stroke-width="3"/><path d="M36 177h270c-1 24-17 35-38 35H75c-24 0-38-11-39-35z" fill="${brim}" stroke="#777777" stroke-width="2"/><path d="m124 96 49 15m-57-1 45 14m-53 1 43 13m-11-68 5 38" fill="none" stroke="${brim}" stroke-width="5" stroke-linecap="round"/><text x="222" y="163" text-anchor="middle" fill="${brim === "#171715" ? "#f5f4ee" : "#171715"}" font-family="Arial,sans-serif" font-size="12" font-weight="700">${label}</text>`,
+        perfume: `<path d="M151 70h58v29l20 17v101H131V116l20-17z" fill="${color}" stroke="#777777" stroke-width="3"/><path d="M164 70V49h32v21m-23-21V37h14v12" fill="none" stroke="${brim}" stroke-width="7" stroke-linejoin="round"/><path d="M145 129h70v48h-70z" fill="${brim}"/><text x="180" y="151" text-anchor="middle" fill="${brim === "#171715" ? "#f5f4ee" : "#171715"}" font-family="Arial,sans-serif" font-size="10" font-weight="700">${label}</text>`
       };
       return `<svg class="${className}" viewBox="0 0 360 260" role="img" aria-label="${escapeHtml(product.department)}: ${escapeHtml(product.name)}">${drawings[product.type]}</svg>`;
     }
@@ -825,10 +825,10 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       event.currentTarget.textContent = isVisible ? "Mostrar" : "Ocultar";
       event.currentTarget.setAttribute("aria-label", isVisible ? "Mostrar contraseña" : "Ocultar contraseña");
     });
-    function showAccountMessage(message, isError = true) {
+    function showAccountMessage(message) {
       const element = document.getElementById("account-message");
       element.textContent = message;
-      element.style.color = isError ? "#b42318" : "#355000";
+      element.style.color = "#3f3f3f";
     }
 
     function getAuthErrorMessage(error) {
@@ -895,10 +895,10 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
           email: document.getElementById("account-email").value.trim()
         });
         if (error) throw error;
-        message.style.color = "#355000";
+        message.style.color = "#3f3f3f";
         message.textContent = "Listo, enviamos otro enlace de confirmación.";
       } catch (error) {
-        message.style.color = "#b42318";
+        message.style.color = "#3f3f3f";
         message.textContent = getAuthErrorMessage(error);
       } finally {
         button.disabled = false;
@@ -918,7 +918,7 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
       const submitButton = document.getElementById("account-submit");
       accountBusy = true;
       submitButton.disabled = true;
-      showAccountMessage(accountMode === "register" ? "Creando tu cuenta..." : "Iniciando sesión...", false);
+      showAccountMessage(accountMode === "register" ? "Creando tu cuenta..." : "Iniciando sesión...");
 
       try {
         if (accountMode === "register") {
