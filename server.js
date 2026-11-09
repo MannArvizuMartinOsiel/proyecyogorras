@@ -9,6 +9,7 @@ const PRODUCT_TYPES = {
   cap: "Gorras",
   shirt: "Ropa",
   hoodie: "Ropa",
+  perfume: "Perfumes",
   chain: "Joyería",
   bracelet: "Joyería",
   sneaker: "Tenis"
@@ -210,7 +211,7 @@ async function getAdminUser(req, res) {
 }
 
 function formatAdminProduct(row) {
-  const template = products.find(product => product.type === row.type);
+  const template = products.find(product => product.type === row.type) || products[0];
   if (!template) throw new Error(`Unknown product type in catalog: ${row.type}`);
   return {
     ...template,
@@ -240,16 +241,10 @@ async function getProductCatalog() {
     error.code = "SUPABASE_SERVICE_ROLE_KEY_REJECTED";
     throw error;
   }
-  const [{ data: customRows, error: customError }, { data: overrideRows, error: overrideError }] = await Promise.all([
-    adminClient
+  const { data: catalogRows, error: catalogError } = await adminClient
     .from("admin_products")
-    .select("id,department,category,type,name,description,price,color,brim,patch,label,image_url")
-    .order("id", { ascending: true }),
-    adminClient
-      .from("admin_product_overrides")
-      .select("id,department,category,type,name,description,price,color,brim,patch,label,image_url,is_deleted")
-  ]);
-  const catalogError = customError || overrideError;
+    .select("id,department,category,type,name,description,price,color,brim,patch,label,image_url,is_deleted")
+    .order("id", { ascending: true });
   if (catalogError) {
     if (/invalid api key/i.test(`${catalogError.message || ""} ${catalogError.hint || ""}`)) {
       serviceRoleKeyRejected = true;
@@ -263,9 +258,9 @@ async function getProductCatalog() {
     }
     throw catalogError;
   }
-  const overrides = new Map(overrideRows.map(row => [Number(row.id), row]));
+  const rowsById = new Map(catalogRows.map(row => [Number(row.id), row]));
   const baseCatalog = products.flatMap(product => {
-    const override = overrides.get(product.id);
+    const override = rowsById.get(product.id);
     if (override?.is_deleted) return [];
     const optionTemplate = products.find(item => item.type === (override?.type || product.type)) || product;
     return [{
@@ -277,7 +272,10 @@ async function getProductCatalog() {
       sizeOptions: optionTemplate.sizeOptions
     }];
   });
-  return [...baseCatalog, ...customRows.map(formatAdminProduct)];
+  const customCatalog = catalogRows
+    .filter(row => Number(row.id) >= 1000 && !row.is_deleted)
+    .map(formatAdminProduct);
+  return [...baseCatalog, ...customCatalog];
 }
 
 function validateAdminProduct(body) {
@@ -292,7 +290,7 @@ function validateAdminProduct(body) {
   ) {
     return { error: "Revisa nombre, departamento, tipo, categoría y precio del artículo." };
   }
-  const template = products.find(product => product.type === type);
+  const template = products.find(product => product.type === type) || products[0];
   return {
     product: {
       department,
@@ -686,7 +684,7 @@ app.put("/api/admin/products/:id", express.json({ limit: "6mb" }), async (req, r
     };
     const isBuiltIn = products.some(product => product.id === id);
     const { error } = isBuiltIn
-      ? await adminClient.from("admin_product_overrides").upsert(catalogRow(updatedProduct), { onConflict: "id" })
+      ? await adminClient.from("admin_products").upsert(catalogRow(updatedProduct), { onConflict: "id" })
       : await adminClient.from("admin_products").update({
         ...validated.product,
         image_url: imageUrl
@@ -727,7 +725,7 @@ app.delete("/api/admin/products/:id", async (req, res) => {
     if (!current) return res.status(404).json({ error: "No encontramos ese artículo en el catálogo." });
 
     const result = products.some(product => product.id === id)
-      ? await adminClient.from("admin_product_overrides").upsert(catalogRow(current, true), { onConflict: "id" })
+      ? await adminClient.from("admin_products").upsert(catalogRow(current, true), { onConflict: "id" })
       : await adminClient.from("admin_products").delete().eq("id", id);
     if (result.error) throw result.error;
     await removeProductImage(current.image_url);

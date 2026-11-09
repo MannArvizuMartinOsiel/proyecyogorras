@@ -13,6 +13,7 @@ const adminSupabase = window.supabase.createClient(
 const typeOptions = {
   Gorras: [["cap", "Gorra"]],
   Ropa: [["shirt", "Playera"], ["hoodie", "Sudadera"]],
+  Perfumes: [["perfume", "Perfume"]],
   Joyería: [["chain", "Cadena"], ["bracelet", "Pulsera"]],
   Tenis: [["sneaker", "Tenis"]]
 };
