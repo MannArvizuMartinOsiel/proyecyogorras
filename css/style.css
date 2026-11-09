@@ -239,15 +239,20 @@
       transform: rotate(-8deg);
       animation: float 5s ease-in-out infinite;
     }
-    .hero-video {
-      position: relative;
-      z-index: 1;
-      width: min(91%, 510px);
-      max-height: 390px;
-      object-fit: contain;
-      filter: drop-shadow(0 26px 20px rgba(0,0,0,.17));
+    .hero-art.has-video .hero-cap,
+    .hero-cap[hidden] {
+      display: none !important;
     }
-    .hero-video[hidden] { display: none; }
+    .hero-video {
+      position: absolute;
+      z-index: 1;
+      inset: 15px;
+      width: calc(100% - 30px);
+      height: calc(100% - 30px);
+      object-fit: contain;
+      background: #171715;
+    }
+    .hero-video[hidden] { display: none !important; }
     @keyframes float { 0%, 100% { transform: translateY(0) rotate(-8deg); } 50% { transform: translateY(-10px) rotate(-6deg); } }
     .art-label {
       position: absolute;

@@ -1309,15 +1309,18 @@ const CHECKOUT_PROVIDER_PENDING_KEY = "capstreet-checkout-provider";
 
         const video = document.getElementById("hero-video");
         const illustration = document.querySelector(".hero-cap");
+        const frame = video.closest(".hero-art");
         video.addEventListener("error", () => {
           console.error("No se pudo reproducir el video de portada.");
           video.hidden = true;
           video.removeAttribute("src");
           illustration.hidden = false;
+          frame.classList.remove("has-video");
         }, { once: true });
         video.src = videoUrl.href;
         video.hidden = false;
         illustration.hidden = true;
+        frame.classList.add("has-video");
         video.play().catch(error => {
           console.warn("La reproducción automática del video de portada no está disponible.", error);
           video.controls = true;
